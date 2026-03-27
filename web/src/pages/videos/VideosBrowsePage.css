@@ -1,0 +1,40 @@
+/* Mantine 보조: 라우터 링크로 쓰는 Paper */
+.vb-session-row {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.vb-session-row:hover {
+  border-color: var(--mantine-color-teal-filled);
+  background-color: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-6)
+  );
+}
+
+.vb-session-thumb {
+  flex-shrink: 0;
+}
+
+.vb-schema .mantine-Anchor-root {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vb-drill-row {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.vb-drill-row:hover {
+  border-color: var(--mantine-color-teal-filled);
+  background-color: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-6)
+  );
+}

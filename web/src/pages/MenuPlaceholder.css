@@ -1,0 +1,35 @@
+.menu-placeholder {
+  padding: 2rem 0;
+  text-align: center;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.menu-placeholder__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+  color: var(--text-heading);
+}
+
+.menu-placeholder__desc {
+  margin: 0 0 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.menu-placeholder__back {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid var(--border-strong);
+  transition: background 0.15s;
+}
+
+.menu-placeholder__back:hover {
+  background: rgba(45, 212, 191, 0.2);
+}

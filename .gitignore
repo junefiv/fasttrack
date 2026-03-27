@@ -1,0 +1,12 @@
+# Cursor / 로컬 전용
+.cursor/
+
+# 루트 환경·비밀 (채운 MCP 설정 등)
+.env
+.env.local
+*.local
+supabase-mcp-credentials.env
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,147 @@
+.cap-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-height: 0;
+}
+
+.cap-panel__head {
+  flex-shrink: 0;
+}
+
+.cap-panel__title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--text-heading);
+}
+
+.cap-panel__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.cap-panel__input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-heading);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+.cap-panel__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cap-panel__input::placeholder {
+  color: var(--text-muted);
+}
+
+.cap-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow-y: auto;
+  max-height: min(52vh, 560px);
+  flex: 1;
+}
+
+.cap-panel--drawer .cap-panel__list {
+  max-height: min(72dvh, 640px);
+}
+
+.cap-panel__empty {
+  padding: 1rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.cap-panel__row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.cap-panel__row:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cap-panel__row-main {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cap-panel__row-main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.cap-panel__ask {
+  flex-shrink: 0;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.cap-panel__row--active {
+  border-color: var(--border-strong);
+  background: var(--accent-dim);
+}
+
+/* Enter 순회 시 현재 줄 (재생 구간 강조와 구분) */
+.cap-panel__row--step {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, rgba(255, 255, 255, 0.02));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.cap-panel__row--step.cap-panel__row--active {
+  box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--border-strong);
+}
+
+.cap-panel__time {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+
+.cap-panel__text {
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cap-panel__mark {
+  background: rgba(251, 191, 36, 0.25);
+  color: var(--text-heading);
+  padding: 0 0.1rem;
+  border-radius: 2px;
+}

@@ -1,0 +1,182 @@
+/* Mantine Drawer 본문 */
+.edraw-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  padding: 0 0.15rem 0.5rem;
+}
+
+.edraw__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0 0 0.65rem;
+}
+
+.edraw__pill {
+  font-size: 0.72rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.edraw__pill--muted {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.75;
+}
+
+.edraw__toc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0 0 0.75rem;
+  border-bottom: 1px solid var(--border);
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.edraw__toc-item {
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.edraw__toc-item:hover:not(:disabled) {
+  border-color: var(--border);
+}
+
+.edraw__toc-item--active {
+  border-color: var(--border-strong);
+  background: var(--accent-dim);
+  color: var(--text-heading);
+}
+
+.edraw__toc-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.edraw__page {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.85rem 0 1.25rem;
+}
+
+.edraw__page--pdf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: min(72dvh, 640px);
+  padding-top: 0.35rem;
+}
+
+.edraw__pdf-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.edraw__pdf-doc {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.edraw__pdf-page {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.edraw__sel-bubble {
+  position: fixed;
+  z-index: 450;
+  transform: translate(-50%, calc(-100% - 6px));
+  padding: 0.35rem 0.45rem;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.edraw__lead {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.edraw__para {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.edraw__fake-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.85rem;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.edraw__fake-line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.edraw__fake-line--short {
+  width: 55%;
+}
+
+.edraw__fake-line--mid {
+  width: 78%;
+}
+
+.edraw__pdf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edraw__pdf-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.edraw__pdf-nav-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 5.5rem;
+  text-align: center;
+}
+
+.edraw__pdf-page-wrap {
+  scroll-margin-top: 0.5rem;
+}
+
