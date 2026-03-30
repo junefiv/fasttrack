@@ -40,9 +40,22 @@ export type LearningResource = {
   pdf_url: string
   lecture_id: string
   title?: string | null
+  /** Edge Function 텍스트 추출 성공 시각 */
+  ebook_text_extracted_at?: string | null
+  /** 추출 실패 시 메시지 */
+  ebook_text_extract_error?: string | null
 }
 
-/** 추후 `lectures` ↔ 이북 본문(FK) 연동 시 LLM·드로어에 주입 */
+/** `ebook_pages` — PDF 페이지별 추출 텍스트 */
+export type EbookPage = {
+  id: string
+  learning_resource_id: string
+  page_number: number
+  body: string
+  created_at?: string
+}
+
+/** `ebook_pages` → `fetchLectureEbookSections` 로 채워 질문 패널·Gemini 프롬프트에 주입 */
 export type LectureEbookSection = {
   id: string
   title: string

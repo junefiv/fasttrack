@@ -26,34 +26,34 @@ export function CaptionSearchPanel({
   onOpenQuestionAtSec,
 }: Props) {
   const [q, setQ] = useState('')
-  /** Enter로 순회할 때 현재 줄(필터 목록 기준). 검색어가 바뀌면 맨 위부터 다시. */
-  const [stepIndex, setStepIndex] = useState<number | null>(null)
-
-  const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    if (!t) return captions
-    return captions.filter((c) => c.text.toLowerCase().includes(t))
-  }, [captions, q])
+  /** Enter 순회 시 `matches` 배열 안의 인덱스. 검색어 변경 시 초기화. */
+  const [stepMatchIndex, setStepMatchIndex] = useState<number | null>(null)
 
   const queryTrim = q.trim()
+  const queryNorm = queryTrim.toLowerCase()
+
+  const matches = useMemo(() => {
+    if (!queryNorm) return []
+    return captions.filter((c) => c.text.toLowerCase().includes(queryNorm))
+  }, [captions, queryNorm])
 
   useEffect(() => {
-    setStepIndex(null)
-  }, [queryTrim])
+    setStepMatchIndex(null)
+  }, [queryNorm])
 
   useEffect(() => {
-    if (stepIndex === null || filtered.length === 0) return
-    const c = filtered[stepIndex]
+    if (stepMatchIndex === null || matches.length === 0) return
+    const c = matches[stepMatchIndex]
     if (!c) return
     const el = document.getElementById(`cap-panel-row-${c.id}`)
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [stepIndex, filtered])
+  }, [stepMatchIndex, matches])
 
   const moveStepDown = () => {
-    if (filtered.length === 0) return
-    setStepIndex((prev) => {
-      const next = prev === null ? 0 : prev + 1 >= filtered.length ? 0 : prev + 1
-      onSeek(filtered[next].start_sec)
+    if (matches.length === 0) return
+    setStepMatchIndex((prev) => {
+      const next = prev === null ? 0 : prev + 1 >= matches.length ? 0 : prev + 1
+      onSeek(matches[next].start_sec)
       return next
     })
   }
@@ -66,7 +66,7 @@ export function CaptionSearchPanel({
       <div className="cap-panel__head">
         <h2 className="cap-panel__title">자막 검색</h2>
         <p className="cap-panel__hint">
-          본문을 입력해 구간을 찾고, 항목을 누르면 해당 시점으로 이동합니다. Enter로 순회해 강조된 줄(또는 클릭해 선택한 줄) 안쪽 오른쪽에서만 해당 구간 기준 질문하기를 열 수 있습니다.
+          전체 자막이 목록에 표시되며, 검색어와 일치하는 글자는 강조됩니다. Enter는 일치하는 줄만 순환하며 선택 표시를 옮기고 해당 시점으로 이동합니다. 선택된 줄에서만 질문하기를 열 수 있습니다.
         </p>
       </div>
       <input
@@ -83,12 +83,14 @@ export function CaptionSearchPanel({
         autoComplete="off"
       />
       <ul className="cap-panel__list">
-        {filtered.length === 0 ? (
-          <li className="cap-panel__empty">일치하는 자막이 없습니다.</li>
+        {captions.length === 0 ? (
+          <li className="cap-panel__empty">자막이 없습니다.</li>
         ) : (
-          filtered.map((c, i) => {
+          captions.map((c) => {
             const active = activeStartSec != null && c.start_sec === activeStartSec
-            const stepped = stepIndex === i
+            const stepCap =
+              stepMatchIndex !== null && matches[stepMatchIndex] ? matches[stepMatchIndex] : null
+            const stepped = stepCap != null && stepCap.id === c.id
             return (
               <li key={c.id}>
                 <div
@@ -99,7 +101,8 @@ export function CaptionSearchPanel({
                     id={`cap-panel-row-${c.id}`}
                     className="cap-panel__row-main"
                     onClick={() => {
-                      setStepIndex(i)
+                      const mi = matches.findIndex((m) => m.id === c.id)
+                      setStepMatchIndex(mi >= 0 ? mi : null)
                       onSeek(c.start_sec)
                     }}
                   >

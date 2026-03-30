@@ -1,0 +1,150 @@
+.mock-result {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+
+.mock-result--centered {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.mock-result--centered a {
+  color: #7dd3fc;
+}
+
+.mock-result__head {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border, #2a3548);
+}
+
+.mock-result__badge {
+  margin: 0 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+
+.mock-result__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-heading, #e8eef7);
+}
+
+.mock-result__scorebox {
+  margin-bottom: 0.75rem;
+}
+
+.mock-result__score {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #e8eef7;
+}
+
+.mock-result__grade {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.mock-result__meta {
+  margin: 0.35rem 0 0;
+  color: var(--text-muted, #8b9cb3);
+  font-size: 0.9rem;
+}
+
+.mock-result__fomo {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.mock-result__wrong {
+  margin-bottom: 1.5rem;
+}
+
+.mock-result__h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.mock-result__muted {
+  color: var(--text-muted, #8b9cb3);
+}
+
+.mock-result__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.mock-result__item {
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border, #2a3548);
+  background: rgba(12, 16, 24, 0.55);
+}
+
+.mock-result__explain {
+  margin: 0.85rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-body, #c8d4e6);
+}
+
+.mock-result__cta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.mock-result__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem 1rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  color: #0b0f14;
+}
+
+.mock-result__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mock-result__btn--upper {
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+}
+
+.mock-result__btn--lower {
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  color: #0b0f14;
+}
+
+.mock-result__btn--agent {
+  background: linear-gradient(135deg, #5eead4, #2dd4bf);
+}
+
+.mock-result__link {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #7dd3fc;
+  text-decoration: none;
+  padding: 0.25rem;
+}

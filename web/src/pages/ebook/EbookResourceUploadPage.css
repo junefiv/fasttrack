@@ -1,0 +1,9 @@
+.eru-page {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.eru-paper {
+  border: 1px solid var(--mantine-color-gray-3);
+}

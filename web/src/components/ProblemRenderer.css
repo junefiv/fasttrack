@@ -1,0 +1,112 @@
+.problem-renderer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.problem-renderer__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.problem-renderer__meta-line {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-body, #c8d4e6);
+}
+
+.problem-renderer__keywords {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.problem-renderer__keyword {
+  margin: 0;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted, #94a3b8);
+}
+
+.problem-renderer__instruction {
+  padding-bottom: 0.25rem;
+  border-bottom: 1px dashed rgba(148, 163, 184, 0.25);
+}
+
+.problem-renderer__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.problem-renderer__body {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--text-body, #c8d4e6);
+  white-space: pre-wrap;
+}
+
+.problem-renderer__body--mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9rem;
+}
+
+.problem-renderer__qtext {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--text-heading, #e8eef7);
+}
+
+.problem-renderer__choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.problem-renderer__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2a3548);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.problem-renderer__choice:hover {
+  border-color: rgba(45, 212, 191, 0.35);
+  background: rgba(45, 212, 191, 0.04);
+}
+
+.problem-renderer__choice--correct {
+  border-color: rgba(52, 211, 153, 0.6);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.problem-renderer__choice input {
+  margin-top: 0.2rem;
+}
+
+.problem-renderer__nochoices {
+  margin: 0;
+  color: var(--text-muted, #8b9cb3);
+  font-size: 0.9rem;
+}

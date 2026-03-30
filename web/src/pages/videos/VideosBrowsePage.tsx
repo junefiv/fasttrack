@@ -16,7 +16,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import type { Lecture, LectureSession, Subject } from '../../types/lectures'
-import { formatTimestamp } from '../../lib/formatTime'
 import './VideosBrowsePage.css'
 
 type LoadState = { status: 'idle' | 'loading' | 'ok' | 'err'; message?: string }
@@ -45,7 +44,6 @@ export function VideosBrowsePage() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [lectures, setLectures] = useState<Lecture[]>([])
   const [sessions, setSessions] = useState<LectureSession[]>([])
-  const [capCountBySession, setCapCountBySession] = useState<Map<string, number>>(new Map())
   const [load, setLoad] = useState<LoadState>({ status: 'idle' })
 
   const [subjectTab, setSubjectTab] = useState<string | null>(null)
@@ -58,16 +56,13 @@ export function VideosBrowsePage() {
     setLoad({ status: 'loading' })
 
     void (async () => {
-      const [subRes, lecRes, sesRes, capRes] = await Promise.all([
+      const [subRes, lecRes, sesRes] = await Promise.all([
         supabase.from('subjects').select('id,name,category').order('name'),
         supabase.from('lectures').select('id,subject_id,instructor,title,series_description').order('title'),
         supabase
           .from('lecture_sessions')
-          .select(
-            'id,lecture_id,session_order,title,youtube_video_id,thumbnail_url,total_duration_sec,youtube_url,caption',
-          )
+          .select('id,lecture_id,title,youtube_video_id,thumbnail_url')
           .order('session_order'),
-        supabase.from('lecture_captions').select('lecture_session_id'),
       ])
 
       if (cancelled) return
@@ -78,19 +73,10 @@ export function VideosBrowsePage() {
         return
       }
 
-      const counts = new Map<string, number>()
-      if (!capRes.error && capRes.data) {
-        for (const row of capRes.data as { lecture_session_id: string }[]) {
-          const id = row.lecture_session_id
-          counts.set(id, (counts.get(id) ?? 0) + 1)
-        }
-      }
-
       const subj = (subRes.data ?? []) as Subject[]
       setSubjects(subj)
       setLectures((lecRes.data ?? []) as Lecture[])
       setSessions((sesRes.data ?? []) as LectureSession[])
-      setCapCountBySession(counts)
       setLoad({ status: 'ok' })
       if (subj.length && subjectTab === null) {
         setSubjectTab(subj[0].id)
@@ -229,13 +215,12 @@ export function VideosBrowsePage() {
                       ) : (
                         <Stack gap="xs">
                           {sessionsInDrill.map((session) => {
-                            const caps = capCountBySession.get(session.id) ?? 0
                             const thumb = session.thumbnail_url ?? ytThumb(session.youtube_video_id)
                             return (
                               <Paper
                                 key={session.id}
                                 component={Link}
-                                to={`/videos/watch/${session.id}`}
+                                to={`/study/videos/watch/${session.id}`}
                                 className="vb-session-row"
                                 withBorder
                                 p="sm"
@@ -252,33 +237,9 @@ export function VideosBrowsePage() {
                                     className="vb-session-thumb"
                                   />
                                   <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                                    <Group gap="xs" wrap="wrap">
-                                      <Badge color="teal" variant="light" size="sm">
-                                        {session.session_order}강
-                                      </Badge>
-                                            {session.caption ? (
-                                        <Badge variant="outline" color="gray" size="sm">
-                                          자막 {caps}구간
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="outline" color="gray" size="sm">
-                                          자막 없음
-                                        </Badge>
-                                      )}
-                                    </Group>
                                     <Text fw={600} lineClamp={2}>
                                       {session.title}
                                     </Text>
-                                    <Group gap="md">
-                                      <Text size="xs" c="dimmed" ff="monospace">
-                                        {session.total_duration_sec != null
-                                          ? formatTimestamp(session.total_duration_sec)
-                                          : '길이 미등록'}
-                                      </Text>
-                                      <Text size="xs" c="dimmed" ff="monospace" lineClamp={1}>
-                                        {session.youtube_video_id}
-                                      </Text>
-                                    </Group>
                                   </Stack>
                                 </Group>
                               </Paper>

@@ -1,18 +1,39 @@
 import { Button, ScrollArea, Stack, Text, Textarea } from '@mantine/core'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LectureCaption, LectureEbookSection } from '../../types/lectures'
 import { formatTimestamp } from '../../lib/formatTime'
-import { askLectureTutorChat, type LectureChatTurn } from '../../lib/gemini'
+import {
+  retrieveCombinedEbookRagForLecturePdfs,
+  retrieveCombinedEbookRagForQuestion,
+} from '../../lib/ebookRag'
+import { supabase } from '../../lib/supabase'
+import {
+  askLectureTutorChat,
+  type LectureChatTurn,
+  type QuestionContextKind,
+} from '../../lib/gemini'
 import './LectureQuestionModal.css'
+
+export type { QuestionContextKind }
 
 export type LectureQuestionThread = {
   id: string
   /** 이 탭을 연 시점(질문하기 클릭 시)의 재생 시각 */
   contextAtSec: number
+  contextKind: QuestionContextKind
+  /** contextKind === 'ebook' 일 때 PDF에서 선택한 원문(대화 전체에서 API에 유지) */
+  ebookHighlight?: string
+  /** 하이라이트가 있던 PDF 페이지(1-based) — 프롬프트 앵커 ±10페이지에 사용 */
+  ebookHighlightPage?: number
+  /** RAG 인덱싱·검색에 쓰는 동일 PDF URL */
+  ebookPdfUrl?: string
   messages: LectureChatTurn[]
   /** 교재 등에서 드래그 인용 시 입력창에 미리 넣을 본문(첫 전송 전까지만 사용) */
   seedDraft?: string
 }
+
+/** 프롬프트 문구·앵커 설명용: 재생 시각 기준 앞뒤 10분 */
+const CAPTION_WINDOW_RADIUS_SEC = 600
 
 type Props = {
   opened: boolean
@@ -27,6 +48,8 @@ type Props = {
   subjectName?: string
   captions: LectureCaption[]
   ebookSections?: LectureEbookSection[]
+  /** 강좌에 연결된 PDF — 영상/자막 검색에서 질문할 때 이중 RAG에 사용 */
+  lecturePdfRefs?: { pdf_url: string; title?: string | null }[]
 }
 
 function threadTabPreview(messages: LectureChatTurn[]): string {
@@ -49,6 +72,7 @@ export function LectureQuestionPanel({
   subjectName,
   captions,
   ebookSections = [],
+  lecturePdfRefs = [],
 }: Props) {
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
@@ -59,6 +83,9 @@ export function LectureQuestionPanel({
   threadsRef.current = threads
 
   const activeThread = threads.find((t) => t.id === activeThreadId) ?? null
+
+  /** API에는 회차 전체 자막 전달; 질문 앵커(±10분)는 프롬프트에서만 설명 */
+  const captionsForActiveThread = useMemo(() => captions, [captions])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -109,16 +136,48 @@ export function LectureQuestionPanel({
       ),
     )
 
+    let ebookRagRetrieved: string | undefined
+    try {
+      const embModel =
+        import.meta.env.VITE_GEMINI_EMBEDDING_MODEL?.trim() || 'gemini-embedding-001'
+      if (activeThread.contextKind === 'ebook' && activeThread.ebookPdfUrl) {
+        ebookRagRetrieved = await retrieveCombinedEbookRagForQuestion({
+          client: supabase,
+          pdfUrl: activeThread.ebookPdfUrl,
+          apiKey,
+          embeddingModel: embModel,
+          highlight: activeThread.ebookHighlight ?? '',
+          userMessage: q,
+        })
+      } else if (activeThread.contextKind === 'video' && lecturePdfRefs.length > 0) {
+        ebookRagRetrieved = await retrieveCombinedEbookRagForLecturePdfs({
+          client: supabase,
+          refs: lecturePdfRefs.map((r) => ({ pdfUrl: r.pdf_url, title: r.title })),
+          apiKey,
+          embeddingModel: embModel,
+          highlight: '',
+          userMessage: q,
+        })
+      }
+    } catch (err) {
+      ebookRagRetrieved = `(RAG 인덱싱·검색 실패: ${err instanceof Error ? err.message : '알 수 없음'}. 자막·DB 본문만 참고하세요.)`
+    }
+
     try {
       const text = await askLectureTutorChat({
         apiKey,
+        contextKind: activeThread.contextKind,
         contextAtSec: activeThread.contextAtSec,
         lectureTitle,
         sessionTitle,
         instructor,
         subjectName,
-        captions,
+        captions: captionsForActiveThread,
         ebookSections,
+        ebookHighlight: activeThread.ebookHighlight,
+        ebookHighlightPage: activeThread.ebookHighlightPage,
+        ebookRagRetrieved,
+        captionWindowRadiusSec: CAPTION_WINDOW_RADIUS_SEC,
         priorTurns: prior,
         newUserMessage: q,
       })
@@ -181,9 +240,22 @@ export function LectureQuestionPanel({
                 </Text>
                 <span className="qchat-main__dot"> · </span>
                 {sessionTitle}
+                <span className="qchat-main__dot"> · </span>
+                {activeThread.contextKind === 'ebook' ? (
+                  <Text span fw={600} c="dimmed">
+                    교재 하이라이트 · 페이지 기준 ±10p 앵커
+                  </Text>
+                ) : (
+                  <Text span fw={600} c="dimmed">
+                    재생·검색 시각 기준 ±10분 앵커
+                  </Text>
+                )}
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
-                자막·이북 범위 안에서만 답합니다. 같은 탭에서 이어서 질문할 수 있습니다.
+                {activeThread.contextKind === 'ebook'
+                  ? '회차 전체 자막·교재 전체 본문을 바탕으로 답하며, 질문 앵커는 하이라이트 페이지 ±10페이지로 안내합니다.'
+                  : '회차 전체 자막·교재 전체 본문을 바탕으로 답하며, 질문 앵커는 재생(또는 자막 검색) 시각 ±10분으로 안내합니다.'}{' '}
+                같은 탭에서 이어서 질문할 수 있습니다.
               </Text>
             </div>
 

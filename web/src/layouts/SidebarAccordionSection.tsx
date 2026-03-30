@@ -2,11 +2,17 @@ import { useEffect, useId, useState, type ReactNode } from 'react'
 
 type Props = {
   title: string
-  /** 경로가 이 접두사로 시작하면 펼침 */
-  pathPrefix: string
+  /** 경로가 접두사와 일치하면 펼침 (여러 개면 하나라도 맞으면 펼침) */
+  pathPrefix: string | string[]
   currentPath: string
   defaultOpen?: boolean
   children: ReactNode
+}
+
+function pathMatchesPrefixes(path: string, prefixes: string[]) {
+  return prefixes.some(
+    (p) => path === p || path.startsWith(`${p}/`),
+  )
 }
 
 export function SidebarAccordionSection({
@@ -17,7 +23,8 @@ export function SidebarAccordionSection({
   children,
 }: Props) {
   const panelId = useId()
-  const matches = currentPath === pathPrefix || currentPath.startsWith(`${pathPrefix}/`)
+  const prefixes = Array.isArray(pathPrefix) ? pathPrefix : [pathPrefix]
+  const matches = pathMatchesPrefixes(currentPath, prefixes)
   const [open, setOpen] = useState(defaultOpen || matches)
 
   useEffect(() => {

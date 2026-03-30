@@ -7,28 +7,6 @@
   padding: 0 0.15rem 0.5rem;
 }
 
-.edraw__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0 0 0.65rem;
-}
-
-.edraw__pill {
-  font-size: 0.72rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  color: var(--accent);
-  font-family: var(--font-mono);
-}
-
-.edraw__pill--muted {
-  color: var(--text-muted);
-  border-color: var(--border);
-  opacity: 0.75;
-}
-
 .edraw__toc {
   display: flex;
   flex-direction: column;
@@ -89,12 +67,31 @@
   background: var(--bg-elevated);
 }
 
+.edraw__pdf-header-nav {
+  flex-shrink: 0;
+}
+
+.edraw__pdf-header-nav-inner {
+  padding: 0.2rem 0.35rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
 .edraw__pdf-doc {
   padding: 0.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
+  /* Drawer/ScrollArea 등에서 상속된 user-select 방지 */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.edraw__pdf-doc .textLayer {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .edraw__pdf-page {
@@ -103,7 +100,8 @@
 
 .edraw__sel-bubble {
   position: fixed;
-  z-index: 450;
+  /* body 포털 — Drawer(400) 위에 표시 */
+  z-index: 5000;
   transform: translate(-50%, calc(-100% - 6px));
   padding: 0.35rem 0.45rem;
   border-radius: 10px;
@@ -152,28 +150,26 @@
   width: 78%;
 }
 
-.edraw__pdf-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.edraw__pdf-nav {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem;
-}
-
 .edraw__pdf-nav-label {
   font-size: 0.78rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   min-width: 5.5rem;
   text-align: center;
+}
+
+.edraw__pdf-nav-row {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.edraw__pdf-page-input {
+  width: 2.85rem;
+  min-width: 2.85rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  padding-left: 0.25rem !important;
+  padding-right: 0.25rem !important;
 }
 
 .edraw__pdf-page-wrap {

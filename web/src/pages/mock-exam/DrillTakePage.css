@@ -1,0 +1,288 @@
+.drill-take {
+  min-height: calc(100svh - 4rem);
+}
+
+.drill-take--centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.drill-take--centered a {
+  color: #fdba74;
+}
+
+.drill-take--drill {
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(14, 10, 8, 0.88);
+}
+
+.drill-take__intro {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+
+.drill-take__badge {
+  margin: 0 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fb923c;
+}
+
+.drill-take__title {
+  margin: 0 0 1rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-heading, #e8eef7);
+}
+
+.drill-take__reason {
+  text-align: left;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border, #2a3548);
+  background: rgba(20, 16, 14, 0.9);
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--text-body, #c8d4e6);
+}
+
+.drill-take__reason-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fdba74;
+}
+
+.drill-take__meta {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.drill-take__start {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  border: none;
+  font-weight: 800;
+  cursor: pointer;
+  color: #0b0f14;
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+  margin-bottom: 0.65rem;
+}
+
+.drill-take__back {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.drill-take--done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50svh;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+
+.drill-take__celebrate h1 {
+  margin: 0.5rem 0;
+  font-size: 1.75rem;
+  font-weight: 900;
+  background: linear-gradient(90deg, #fb923c, #fbbf24);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.drill-take__celebrate p {
+  margin: 0;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.drill-take__spark {
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.5), transparent 70%);
+  animation: drill-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes drill-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.85;
+  }
+}
+
+.drill-take__done-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.drill-take__btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  color: #0b0f14;
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+}
+
+.drill-take__btn--ghost {
+  background: transparent;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  color: #fdba74;
+}
+
+.drill-take__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border, #2a3548);
+  background: rgba(12, 10, 8, 0.95);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.drill-take__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drill-take__hint {
+  font-size: 0.8rem;
+  color: #fdba74;
+  text-decoration: none;
+}
+
+.drill-take__submit {
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #0b0f14;
+  background: linear-gradient(135deg, #fb923c, #ea580c);
+}
+
+.drill-take__submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.drill-take__err {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.drill-take__body {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+}
+
+@media (max-width: 720px) {
+  .drill-take__body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.drill-take__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  border-right: 1px solid var(--border, #2a3548);
+  align-content: flex-start;
+  background: rgba(18, 14, 12, 0.55);
+}
+
+@media (max-width: 720px) {
+  .drill-take__nav {
+    border-right: none;
+    border-bottom: 1px solid var(--border, #2a3548);
+  }
+}
+
+.drill-take__num {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2a3548);
+  background: rgba(24, 20, 18, 0.9);
+  color: var(--text-body, #c8d4e6);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.drill-take__num--current {
+  border-color: #fb923c;
+  color: #fdba74;
+}
+
+.drill-take__num--done {
+  border-color: rgba(251, 146, 60, 0.35);
+}
+
+.drill-take__main {
+  padding: 1rem 1.15rem 1.5rem;
+}
+
+.drill-take__progress {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.drill-take__pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  gap: 1rem;
+}
+
+.drill-take__pager button {
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2a3548);
+  background: rgba(22, 18, 16, 0.95);
+  color: var(--text-body, #c8d4e6);
+  cursor: pointer;
+}
+
+.drill-take__pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

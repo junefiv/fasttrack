@@ -3,7 +3,11 @@ import { useDisclosure } from '@mantine/hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { CaptionSearchPanel } from '../../features/lecture/CaptionSearchPanel'
-import { EbookDrawerPanel } from '../../features/lecture/EbookDrawer'
+import {
+  EbookDrawerPanel,
+  EbookPdfPageNav,
+  type PdfReaderToolbarApi,
+} from '../../features/lecture/EbookDrawer'
 import {
   LectureQuestionPanel,
   type LectureQuestionThread,
@@ -12,9 +16,10 @@ import {
   SessionYouTubePlayer,
   type SessionPlayerHandle,
 } from '../../features/lecture/SessionYouTubePlayer'
+import { fetchLectureEbookSections } from '../../lib/lectureEbookSections'
 import { formatTimestamp } from '../../lib/formatTime'
 import { supabase } from '../../lib/supabase'
-import type { LectureCaption } from '../../types/lectures'
+import type { LectureCaption, LectureEbookSection } from '../../types/lectures'
 import './VideoSessionPage.css'
 
 type SubEmb = { id: string; name: string; category: string | null }
@@ -65,6 +70,9 @@ export function VideoSessionPage() {
   const [questionThreads, setQuestionThreads] = useState<LectureQuestionThread[]>([])
   const [activeQuestionThreadId, setActiveQuestionThreadId] = useState<string | null>(null)
   const [ebookOpen, setEbookOpen] = useState(false)
+  const [ebookPdfToolbar, setEbookPdfToolbar] = useState<PdfReaderToolbarApi | null>(null)
+  const [ebookSections, setEbookSections] = useState<LectureEbookSection[]>([])
+  const [lecturePdfRefs, setLecturePdfRefs] = useState<{ pdf_url: string; title: string | null }[]>([])
 
   const activeCaption = useMemo(() => {
     return (
@@ -87,6 +95,8 @@ export function VideoSessionPage() {
     let cancelled = false
     setLoad('loading')
     setErrMsg(null)
+    setEbookSections([])
+    setLecturePdfRefs([])
 
     void (async () => {
       const { data, error } = await supabase
@@ -122,13 +132,31 @@ export function VideoSessionPage() {
 
       setSession(data as SessionDetail)
 
-      const cap = await supabase
-        .from('lecture_captions')
-        .select('id,lecture_session_id,start_sec,end_sec,text,language')
-        .eq('lecture_session_id', sessionId)
-        .order('start_sec')
+      const lectureId = data.lecture_id as string
+      const [cap, sections, pdfRes] = await Promise.all([
+        supabase
+          .from('lecture_captions')
+          .select('id,lecture_session_id,start_sec,end_sec,text,language')
+          .eq('lecture_session_id', sessionId)
+          .order('start_sec'),
+        fetchLectureEbookSections(supabase, lectureId),
+        supabase.from('learning_resources').select('pdf_url,title').eq('lecture_id', lectureId).order('id'),
+      ])
 
       if (cancelled) return
+      if (!cancelled) {
+        setEbookSections(sections)
+        const prow = (pdfRes.data ?? []) as { pdf_url?: string; title?: string | null }[]
+        setLecturePdfRefs(
+          prow
+            .filter((r) => String(r.pdf_url ?? '').trim().length > 0)
+            .map((r) => ({
+              pdf_url: String(r.pdf_url).trim(),
+              title: r.title ?? null,
+            })),
+        )
+      }
+
       if (cap.error) {
         setLoad('err')
         setErrMsg(cap.error.message)
@@ -172,7 +200,7 @@ export function VideoSessionPage() {
     return (
       <div className="vs-errbox">
         <p className="vs-err">{errMsg}</p>
-        <Link className="vs-back" to="/videos">
+        <Link className="vs-back" to="/study/videos">
           강의 목록으로
         </Link>
       </div>
@@ -192,7 +220,7 @@ export function VideoSessionPage() {
   function handleQuestionClick() {
     const t = playerRef.current?.getCurrentTime() ?? 0
     const id = crypto.randomUUID()
-    setQuestionThreads((prev) => [{ id, contextAtSec: t, messages: [] }, ...prev])
+    setQuestionThreads((prev) => [{ id, contextAtSec: t, contextKind: 'video', messages: [] }, ...prev])
     setActiveQuestionThreadId(id)
     openQuestion()
     bumpUi()
@@ -201,28 +229,46 @@ export function VideoSessionPage() {
   function handleOpenQuestionFromCaptionSearch(startSec: number) {
     handleSeek(startSec)
     const id = crypto.randomUUID()
-    setQuestionThreads((prev) => [{ id, contextAtSec: startSec, messages: [] }, ...prev])
+    setQuestionThreads((prev) => [
+      { id, contextAtSec: startSec, contextKind: 'video', messages: [] },
+      ...prev,
+    ])
     setActiveQuestionThreadId(id)
     closeCaptionSearch()
     openQuestion()
   }
 
-  function handleOpenQuestionFromPdfSelection(selectedText: string) {
+  function handleOpenQuestionFromPdfSelection(selectedText: string, pdfUrl: string, highlightPage: number) {
     const t = playerRef.current?.getCurrentTime() ?? 0
     const id = crypto.randomUUID()
     setQuestionThreads((prev) => [
-      { id, contextAtSec: t, messages: [], seedDraft: selectedText },
+      {
+        id,
+        contextAtSec: t,
+        contextKind: 'ebook',
+        ebookHighlight: selectedText,
+        ebookHighlightPage: highlightPage,
+        ebookPdfUrl: pdfUrl,
+        messages: [],
+        seedDraft: selectedText,
+      },
       ...prev,
     ])
     setActiveQuestionThreadId(id)
     setEbookOpen(false)
+    setEbookPdfToolbar(null)
     openQuestion()
+  }
+
+  function closeEbookDrawer() {
+    setEbookOpen(false)
+    setEbookPdfToolbar(null)
   }
 
   return (
     <div className="vs">
       <nav className="vs-crumb" aria-label="breadcrumb">
-        <Link to="/videos">강의 목록</Link>
+        <Link to="/study/videos">강의 목록</Link>
         <span className="vs-crumb__sep">/</span>
         <span>{subject?.name ?? '과목'}</span>
         <span className="vs-crumb__sep">/</span>
@@ -298,7 +344,12 @@ export function VideoSessionPage() {
             <button
               type="button"
               className="vs-btn vs-btn--ghost"
-              onClick={() => setEbookOpen((o) => !o)}
+              onClick={() =>
+                setEbookOpen((o) => {
+                  if (o) setEbookPdfToolbar(null)
+                  return !o
+                })
+              }
             >
               {ebookOpen ? '교재 닫기' : '교재 보기'}
             </button>
@@ -360,14 +411,23 @@ export function VideoSessionPage() {
           instructor={lec?.instructor}
           subjectName={subject?.name ?? undefined}
           captions={captions}
-          ebookSections={[]}
+          ebookSections={ebookSections}
+          lecturePdfRefs={lecturePdfRefs}
         />
       </Drawer>
 
       <Drawer
         opened={ebookOpen}
-        onClose={() => setEbookOpen(false)}
-        title={`연결 교재 · ${lec?.title ?? '강좌'}`}
+        onClose={closeEbookDrawer}
+        title={
+          <Group justify="space-between" align="center" gap="sm" wrap="nowrap" w="100%">
+            <Text component="span" size="md" fw={600} lineClamp={1} style={{ flex: 1, minWidth: 0 }}>
+              {`연결 교재 · ${lec?.title ?? '강좌'}`}
+            </Text>
+            {ebookPdfToolbar ? <EbookPdfPageNav api={ebookPdfToolbar} /> : null}
+          </Group>
+        }
+        styles={{ title: { width: '100%', marginRight: 0 } }}
         position="right"
         size="min(920px, 96vw)"
         zIndex={400}
@@ -377,6 +437,7 @@ export function VideoSessionPage() {
           <EbookDrawerPanel
             lectureId={session.lecture_id ?? lec?.id ?? ''}
             onOpenQuestionFromSelection={handleOpenQuestionFromPdfSelection}
+            onPdfToolbar={setEbookPdfToolbar}
           />
         </ScrollArea>
       </Drawer>

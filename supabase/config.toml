@@ -1,0 +1,6 @@
+# Supabase CLI (supabase link / functions deploy) 시 프로젝트와 동기화됩니다.
+project_id = "fasttrack"
+
+[functions.extract-ebook-pages]
+# Database Webhook 은 JWT 없이 호출 → 커스텀 헤더(x-ebook-secret)로 검증
+verify_jwt = false

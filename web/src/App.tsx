@@ -1,9 +1,26 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AppShell } from './layouts/AppShell'
+import { EbookResourceUploadPage } from './pages/ebook/EbookResourceUploadPage'
 import { DashboardCockpit } from './pages/DashboardCockpit'
 import { MenuPlaceholder } from './pages/MenuPlaceholder'
+import { DrillTakePage } from './pages/mock-exam/DrillTakePage'
+import { MockDrillHomePage } from './pages/mock-exam/MockDrillHomePage'
+import { MockDrillShell } from './pages/mock-exam/MockDrillShell'
+import { MockExamResultPage } from './pages/mock-exam/MockExamResultPage'
+import { MockExamTakePage } from './pages/mock-exam/MockExamTakePage'
+import { QuestionBankPage } from './pages/mock-exam/QuestionBankPage'
 import { VideoSessionPage } from './pages/videos/VideoSessionPage'
 import { VideosBrowsePage } from './pages/videos/VideosBrowsePage'
+import { CurriculumCoachPage } from './pages/d-agent/CurriculumCoachPage'
+import { LearningCoachChatPage } from './pages/d-agent/LearningCoachChatPage'
+
+const ebookUploadEnabled = import.meta.env.VITE_ENABLE_EBOOK_UPLOAD === 'true'
+
+function LegacyVideoWatchRedirect() {
+  const { sessionId } = useParams()
+  if (!sessionId) return <Navigate to="/study/videos" replace />
+  return <Navigate to={`/study/videos/watch/${sessionId}`} replace />
+}
 
 export default function App() {
   return (
@@ -11,8 +28,43 @@ export default function App() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<DashboardCockpit />} />
-          <Route path="videos" element={<VideosBrowsePage />} />
-          <Route path="videos/watch/:sessionId" element={<VideoSessionPage />} />
+
+          <Route path="study/videos" element={<VideosBrowsePage />} />
+          <Route path="study/videos/watch/:sessionId" element={<VideoSessionPage />} />
+          <Route path="study/mock-exam" element={<MockDrillShell />}>
+            <Route index element={<MockDrillHomePage />} />
+            <Route path="bank" element={<QuestionBankPage />} />
+            <Route path="preview/:catalogId" element={<MockExamTakePage />} />
+            <Route path="mock/:examId" element={<MockExamTakePage />} />
+            <Route path="mock/:examId/result/:resultId" element={<MockExamResultPage />} />
+            <Route path="drill" element={<DrillTakePage />} />
+          </Route>
+          <Route path="study/question-bank" element={<Navigate to="/study/mock-exam/bank" replace />} />
+          <Route
+            path="study/archive"
+            element={
+              <MenuPlaceholder
+                title="아카이브"
+                description="학습 아카이브는 준비 중입니다."
+              />
+            }
+          />
+
+          <Route path="d-agent/mh-chat" element={<LearningCoachChatPage />} />
+          <Route path="d-agent/learning-coach" element={<CurriculumCoachPage />} />
+          <Route
+            path="d-agent/admission-coach"
+            element={
+              <MenuPlaceholder
+                title="MY 입시코치"
+                description="입시 코칭 기능은 준비 중입니다."
+              />
+            }
+          />
+
+          <Route path="videos" element={<Navigate to="/study/videos" replace />} />
+          <Route path="videos/watch/:sessionId" element={<LegacyVideoWatchRedirect />} />
+
           <Route
             path="ebook"
             element={
@@ -23,23 +75,16 @@ export default function App() {
             }
           />
           <Route
-            path="qna"
+            path="ebook/upload"
             element={
-              <MenuPlaceholder
-                title="질문하기"
-                description="Q&amp;A 게시판은 준비 중입니다."
-              />
+              ebookUploadEnabled ? (
+                <EbookResourceUploadPage />
+              ) : (
+                <Navigate to="/ebook" replace />
+              )
             }
           />
-          <Route
-            path="my"
-            element={
-              <MenuPlaceholder
-                title="마이 메뉴"
-                description="프로필·설정·학습 기록은 준비 중입니다."
-              />
-            }
-          />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

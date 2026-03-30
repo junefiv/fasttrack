@@ -9,8 +9,14 @@ export function AppShell() {
 
   const closeMobileNav = () => setMobileNavOpen(false)
 
+  const focusExamTake = /\/study\/mock-exam\/mock\/[^/]+$/.test(pathname)
+  const focusDrillTake = pathname === '/study/mock-exam/drill'
+  const focusMode = focusExamTake || focusDrillTake
+
   return (
-    <div className={`app-shell${mobileNavOpen ? ' app-shell--nav-open' : ''}`}>
+    <div
+      className={`app-shell${mobileNavOpen ? ' app-shell--nav-open' : ''}${focusMode ? ' app-shell--focus' : ''}`}
+    >
       <div
         className="app-shell__scrim"
         aria-hidden={!mobileNavOpen}
@@ -27,7 +33,7 @@ export function AppShell() {
             <span className="app-shell__brand-mark" aria-hidden />
             <span className="app-shell__brand-text">FASTTRACK</span>
           </NavLink>
-          <p className="app-shell__sidebar-caption">학습 네비게이터</p>
+          <p className="app-shell__sidebar-caption">Study room · D-Agent</p>
         </div>
 
         <nav className="app-shell__side-nav" aria-label="주요 메뉴">
@@ -43,58 +49,64 @@ export function AppShell() {
             메인 대시보드
           </NavLink>
 
-          <SidebarAccordionSection
-            title="인강 보기"
-            pathPrefix="/videos"
-            currentPath={pathname}
-          >
+          <SidebarAccordionSection title="STUDY ROOM" pathPrefix="/study" currentPath={pathname}>
             <NavLink
-              to="/videos"
+              to="/study/videos"
               className={({ isActive }) =>
                 `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
               }
               onClick={closeMobileNav}
             >
-              강의 목록
+              인강/교재 학습
             </NavLink>
-            <span className="app-shell__side-link app-shell__side-link--muted">이어서 보기 · 준비 중</span>
+            <NavLink
+              to="/study/mock-exam"
+              className={({ isActive }) =>
+                `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
+              }
+              onClick={closeMobileNav}
+            >
+              모의고사 &amp; 드릴
+            </NavLink>
+
+            <NavLink
+              to="/study/archive"
+              className={({ isActive }) =>
+                `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
+              }
+              onClick={closeMobileNav}
+            >
+              학습 아카이브
+            </NavLink>
           </SidebarAccordionSection>
 
-          <SidebarAccordionSection title="이북 보기" pathPrefix="/ebook" currentPath={pathname}>
+          <SidebarAccordionSection title="D-AGENT" pathPrefix="/d-agent" currentPath={pathname}>
             <NavLink
-              to="/ebook"
+              to="/d-agent/mh-chat"
               className={({ isActive }) =>
                 `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
               }
               onClick={closeMobileNav}
             >
-              서재
+              학습코치
             </NavLink>
-            <span className="app-shell__side-link app-shell__side-link--muted">북마크 · 준비 중</span>
-          </SidebarAccordionSection>
-
-          <SidebarAccordionSection title="질문하기" pathPrefix="/qna" currentPath={pathname}>
             <NavLink
-              to="/qna"
+              to="/d-agent/learning-coach"
               className={({ isActive }) =>
                 `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
               }
               onClick={closeMobileNav}
             >
-              Q&amp;A 게시판
+              커리큘럼 코치
             </NavLink>
-            <span className="app-shell__side-link app-shell__side-link--muted">내 질문 · 준비 중</span>
-          </SidebarAccordionSection>
-
-          <SidebarAccordionSection title="마이 메뉴" pathPrefix="/my" currentPath={pathname}>
             <NavLink
-              to="/my"
+              to="/d-agent/admission-coach"
               className={({ isActive }) =>
                 `app-shell__side-link${isActive ? ' app-shell__side-link--active' : ''}`
               }
               onClick={closeMobileNav}
             >
-              프로필 · 설정
+              입시코치
             </NavLink>
           </SidebarAccordionSection>
         </nav>

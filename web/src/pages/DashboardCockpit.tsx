@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import './DashboardCockpit.css'
 
 export function DashboardCockpit() {
@@ -10,6 +11,20 @@ export function DashboardCockpit() {
       </header>
 
       <div className="cockpit__grid">
+        <article className="cockpit-card cockpit-card--drill-rec">
+          <div className="cockpit-card__eyebrow">
+            <span className="cockpit-card__dot cockpit-card__dot--ok" aria-hidden />
+            오늘 추천 드릴
+          </div>
+          <p className="cockpit-card__body">
+            취약 유형을 바로 보완하는 <strong className="cockpit-card__highlight">상위·하위 드릴</strong>을
+            시작하세요. 모의고사 결과와 통계가 연동됩니다.
+          </p>
+          <Link to="/study/mock-exam" className="cockpit-card__cta">
+            모의고사 &amp; 드릴 열기
+          </Link>
+        </article>
+
         <article className="cockpit-card cockpit-card--brief">
           <div className="cockpit-card__eyebrow">
             <span className="cockpit-card__dot cockpit-card__dot--ok" aria-hidden />
