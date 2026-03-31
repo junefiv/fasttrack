@@ -278,6 +278,72 @@ export function aggregateMockCatalogPillarTotals(
   return out
 }
 
+/** 카탈로그별 동료 대비 백분위(시험 시리즈당) */
+export type MockCatalogPeerBarStats = {
+  peerUserCount: number
+  /** 백분위 계산에 포함된 사용자 수(본인 포함) */
+  comparedUserCount: number
+  myPercentile: number | null
+  /**
+   * 본인 누적 제출을 제외한 다른 응시자 전원의 누적 제출 합산 정답률(%).
+   * 다른 사람 제출이 없으면 null.
+   */
+  othersAccuracyPercent: number | null
+}
+
+/**
+ * @param byCatalogUser catalogId → (userId → 누적 correct/total)
+ * @param catalogIds 나의 막대에 해당하는 카탈로그만 계산
+ */
+export function buildMockCatalogPeerStatsMap(
+  byCatalogUser: Map<string, Map<string, { correct: number; total: number }>>,
+  catalogIds: string[],
+  currentUserId: string,
+): Map<string, MockCatalogPeerBarStats> {
+  const out = new Map<string, MockCatalogPeerBarStats>()
+  for (const catalogId of catalogIds) {
+    const userMap = byCatalogUser.get(catalogId)
+    if (!userMap) continue
+
+    const entries: { userId: string; pct: number }[] = []
+    for (const [userId, agg] of userMap) {
+      if (agg.total < 1) continue
+      const pct = Math.round((agg.correct * 1000) / agg.total) / 10
+      entries.push({ userId, pct })
+    }
+
+    const myEntry = entries.find((e) => e.userId === currentUserId)
+    if (!myEntry) continue
+
+    const myAgg = userMap.get(currentUserId)
+    if (!myAgg) continue
+
+    let allCorrect = 0
+    let allTotal = 0
+    for (const agg of userMap.values()) {
+      allCorrect += agg.correct
+      allTotal += agg.total
+    }
+    const othersCorrect = allCorrect - myAgg.correct
+    const othersTotal = allTotal - myAgg.total
+    const othersAccuracyPercent =
+      othersTotal > 0 ? Math.round((othersCorrect * 1000) / othersTotal) / 10 : null
+
+    const allPcts = entries.map((e) => e.pct).sort((a, b) => a - b)
+    const myPercentile =
+      entries.length >= 2 ? scoreToPercentile(allPcts, myEntry.pct) : null
+    const peerUserCount = entries.filter((e) => e.userId !== currentUserId).length
+
+    out.set(catalogId, {
+      peerUserCount,
+      comparedUserCount: entries.length,
+      myPercentile,
+      othersAccuracyPercent,
+    })
+  }
+  return out
+}
+
 export function formatMockCatalogPillarSummaryLine(bars: MockCatalogAccuracyBar[]): string {
   if (bars.length === 0) {
     return '아직 카탈로그 모의고사 문항 제출 기록이 없습니다.'

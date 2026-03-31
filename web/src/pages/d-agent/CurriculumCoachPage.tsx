@@ -9,10 +9,12 @@ import {
   aggregateMockCatalogPillarTotals,
   bankLeagueFromAccuracy,
   buildMockCatalogAccuracyBars,
+  buildMockCatalogPeerStatsMap,
   demoPeerLectureMedianPercent,
   formatMockCatalogPillarSummaryLine,
   MOCK_CATALOG_PILLAR_SECTION_ORDER,
   type MockCatalogAccuracyBar,
+  type MockCatalogPeerBarStats,
   type MockSummaryPillar,
 } from '../../lib/curriculumCoachStatus'
 import { countWatchedSessions } from '../../lib/curriculumCoachWatch'
@@ -23,6 +25,7 @@ import {
   rollupMockProblemsByTag,
 } from '../../lib/curriculumCoachMockInsights'
 import {
+  fetchCatalogExamAggregatesByCatalogAndUser,
   fetchCatalogMockCoachBundleForUser,
   fetchChapterNamesMap,
   fetchLectureSessionCount,
@@ -107,6 +110,135 @@ function MockPillarDonut({
   )
 }
 
+/** 시험(카탈로그)별: 동료가 있으면 눈금=백분위·마커=백분위, 없으면 눈금=정답률·마커=정답률 */
+function MockExamPositionOnScale({
+  examLabel,
+  myAccuracyPercent,
+  peerStats,
+}: {
+  examLabel: string
+  myAccuracyPercent: number
+  peerStats: MockCatalogPeerBarStats
+}) {
+  const { comparedUserCount, myPercentile } = peerStats
+  const usesPercentileScale = myPercentile != null
+  const markerValue = usesPercentileScale ? myPercentile : myAccuracyPercent
+  const markerLeft = Math.min(99, Math.max(1, markerValue))
+
+  const pctLabel = usesPercentileScale
+    ? `누적 정답률 ${myAccuracyPercent}%. 응시자 ${comparedUserCount}명 중 백분위 약 ${myPercentile}%.`
+    : `누적 정답률 ${myAccuracyPercent}%. 다른 응시자가 없어 눈금은 정답률(0~100%)만 표시합니다.`
+
+  const aria = usesPercentileScale
+    ? [
+        `${examLabel} 시리즈`,
+        `동료 대비 백분위 눈금 0에서 100`,
+        `나의 백분위 약 ${myPercentile}퍼센트`,
+        `누적 정답률 ${myAccuracyPercent}퍼센트`,
+      ].join('. ')
+    : [
+        `${examLabel} 시리즈`,
+        `누적 정답률 눈금 0에서 100퍼센트`,
+        `나의 정답률 ${myAccuracyPercent}퍼센트 위치`,
+      ].join('. ')
+
+  return (
+    <div className="curriculum-coach__acc-peer-wrap">
+      <p className="curriculum-coach__acc-peer-caption">
+        <span>{pctLabel}</span>
+        <span className="curriculum-coach__acc-peer-legend" aria-hidden>
+          ▼ 나
+        </span>
+      </p>
+      <p className="curriculum-coach__acc-peer-axis" aria-hidden>
+        {usesPercentileScale ? '눈금: 동료 대비 백분위 (0~100)' : '눈금: 누적 정답률 (0~100%)'}
+      </p>
+      <div className="curriculum-coach__acc-peer-scale" role="img" aria-label={aria}>
+        <div className="curriculum-coach__acc-peer-rail" aria-hidden>
+          <div
+            className="curriculum-coach__acc-peer-marker"
+            style={{ left: `${markerLeft}%` }}
+          />
+        </div>
+        <div className="curriculum-coach__acc-peer-ticks" aria-hidden>
+          <span>0</span>
+          <span>50</span>
+          <span>100</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 나 vs 다른 응시자(본인 제외 누적 합산) 정답률 % 막대 비교 */
+function MockCatalogBarCompare({
+  examLabel,
+  myPercent,
+  peerRow,
+}: {
+  examLabel: string
+  myPercent: number
+  peerRow: MockCatalogPeerBarStats | undefined
+}) {
+  const othersPct = peerRow?.othersAccuracyPercent ?? null
+  const showOthersRow = Boolean(peerRow)
+
+  return (
+    <div className="curriculum-coach__acc-compare">
+      <p className="curriculum-coach__acc-compare-exam">{examLabel}</p>
+      <div className="curriculum-coach__acc-compare-rows">
+        <div className="curriculum-coach__acc-compare-row">
+          <span className="curriculum-coach__acc-compare-label">나</span>
+          <div className="curriculum-coach__acc-compare-track-wrap">
+            <div
+              className="curriculum-coach__acc-compare-track"
+              role="img"
+              aria-label={`나의 누적 제출 정답률 ${myPercent}퍼센트`}
+            >
+              <div
+                className="curriculum-coach__acc-compare-fill curriculum-coach__acc-compare-fill--mine"
+                style={{ width: `${Math.min(100, myPercent)}%` }}
+              />
+            </div>
+          </div>
+          <span className="curriculum-coach__acc-compare-pct">{myPercent}%</span>
+        </div>
+        {showOthersRow ? (
+          <div className="curriculum-coach__acc-compare-row">
+            <span className="curriculum-coach__acc-compare-label">다른 응시자</span>
+            <div className="curriculum-coach__acc-compare-track-wrap">
+              <div
+                className="curriculum-coach__acc-compare-track"
+                role="img"
+                aria-label={
+                  othersPct != null
+                    ? `다른 응시자 누적 합산 정답률 ${othersPct}퍼센트, 본인 제출 제외`
+                    : '다른 응시자 제출 없음'
+                }
+              >
+                {othersPct != null ? (
+                  <div
+                    className="curriculum-coach__acc-compare-fill curriculum-coach__acc-compare-fill--others"
+                    style={{ width: `${Math.min(100, othersPct)}%` }}
+                  />
+                ) : null}
+              </div>
+            </div>
+            <span
+              className={
+                'curriculum-coach__acc-compare-pct' +
+                (othersPct == null ? ' curriculum-coach__acc-compare-pct--muted' : '')
+              }
+            >
+              {othersPct != null ? `${othersPct}%` : '—'}
+            </span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 export function CurriculumCoachPage() {
   const userId = useMemo(() => getFasttrackUserId(), [])
   const [profile] = useState(() => loadCurriculumCoachProfile())
@@ -121,6 +253,10 @@ export function CurriculumCoachPage() {
   >([])
   const [mockProblemLatest, setMockProblemLatest] = useState<CatalogMockProblemLatestRow[]>([])
   const [mockCatalogAccuracy, setMockCatalogAccuracy] = useState<MockCatalogAccuracyBar[]>([])
+  const [catalogPeerAggByUser, setCatalogPeerAggByUser] = useState<Map<
+    string,
+    Map<string, { correct: number; total: number }>
+  > | null>(null)
   const [lectureSessionTotal, setLectureSessionTotal] = useState(0)
   const [watchedCount, setWatchedCount] = useState(0)
   const [expanded, setExpanded] = useState<DetailKey | null>(null)
@@ -192,8 +328,19 @@ export function CurriculumCoachPage() {
           raw: catErr,
         })
       }
+      let peerAgg: Map<string, Map<string, { correct: number; total: number }>> | null = null
+      try {
+        peerAgg = await fetchCatalogExamAggregatesByCatalogAndUser()
+      } catch (peerErr) {
+        console.error('[CurriculumCoach] 동료 모의고사 집계 실패 (나머지 현황은 유지)', {
+          message: messageFromUnknownError(peerErr),
+          userId,
+          raw: peerErr,
+        })
+      }
       setCatalogMockDashboard(catalogDashboard)
       setMockProblemLatest(problemLatest)
+      setCatalogPeerAggByUser(peerAgg)
       setMockCatalogAccuracy(
         buildMockCatalogAccuracyBars(
           subjects,
@@ -222,6 +369,7 @@ export function CurriculumCoachPage() {
       setCatalogMockDashboard([])
       setMockProblemLatest([])
       setMockCatalogAccuracy([])
+      setCatalogPeerAggByUser(null)
       setLectureSessionTotal(0)
       setWatchedCount(0)
     } finally {
@@ -282,6 +430,15 @@ export function CurriculumCoachPage() {
     () => groupMockProblemsByCatalog(mockProblemLatest),
     [mockProblemLatest],
   )
+
+  const mockPeerStatsByCatalog = useMemo(() => {
+    if (!catalogPeerAggByUser || mockCatalogAccuracy.length === 0) return new Map<string, MockCatalogPeerBarStats>()
+    return buildMockCatalogPeerStatsMap(
+      catalogPeerAggByUser,
+      mockCatalogAccuracy.map((b) => b.catalogId),
+      userId,
+    )
+  }, [catalogPeerAggByUser, mockCatalogAccuracy, userId])
 
   const mockAccuracySections = useMemo(() => {
     if (mockCatalogAccuracy.length === 0) return []
@@ -481,7 +638,7 @@ export function CurriculumCoachPage() {
                     과목 · 시험별 문항 정답률 (누적 제출 건수 기준)
                   </h4>
                   <p className="curriculum-coach__detail-lead curriculum-coach__detail-lead--tight">
-                    동일 문항을 여러 번 제출하면 건수만큼 반영됩니다.
+                    동일 문항을 여러 번 제출하면 건수만큼 반영됩니다. 막대는 정답률(%)만 비교합니다. 다른 응시자 막대는 본인 제출을 뺀 나머지 전원의 누적 제출을 합친 정답률입니다. 응시자가 둘 이상이면 아래 눈금은 동료 대비 백분위(0~100)이고, 나만 있으면 눈금·삼각형은 나의 정답률(0~100%)입니다.
                   </p>
                   {mockAccuracySections.length === 0 ? (
                     <p className="curriculum-coach__detail-muted">
@@ -497,26 +654,25 @@ export function CurriculumCoachPage() {
                         <div key={sec.heading} className="curriculum-coach__acc-pillar-block">
                           <h5 className="curriculum-coach__acc-pillar-heading">{sec.heading}</h5>
                           <ul className="curriculum-coach__acc-bar-list">
-                            {sec.bars.map((bar) => (
-                              <li key={bar.catalogId} className="curriculum-coach__acc-bar-item">
-                                <div className="curriculum-coach__acc-bar-label">
-                                  <span className="curriculum-coach__acc-bar-title">{bar.examLabel}</span>
-                                  <span className="curriculum-coach__acc-bar-stat" aria-hidden>
-                                    {bar.accuracyPercent}% · {bar.correct}/{bar.total}문항
-                                  </span>
-                                </div>
-                                <div
-                                  className="curriculum-coach__acc-bar-track"
-                                  role="img"
-                                  aria-label={`${sec.heading} ${bar.examLabel} 정답률 ${bar.accuracyPercent}퍼센트, ${bar.correct}개 맞춤 전체 ${bar.total}문항`}
-                                >
-                                  <div
-                                    className="curriculum-coach__acc-bar-fill"
-                                    style={{ width: `${Math.min(100, bar.accuracyPercent)}%` }}
+                            {sec.bars.map((bar) => {
+                              const peerRow = mockPeerStatsByCatalog.get(bar.catalogId)
+                              return (
+                                <li key={bar.catalogId} className="curriculum-coach__acc-bar-item">
+                                  <MockCatalogBarCompare
+                                    examLabel={bar.examLabel}
+                                    myPercent={bar.accuracyPercent}
+                                    peerRow={peerRow ?? undefined}
                                   />
-                                </div>
-                              </li>
-                            ))}
+                                  {peerRow ? (
+                                    <MockExamPositionOnScale
+                                      examLabel={bar.examLabel}
+                                      myAccuracyPercent={bar.accuracyPercent}
+                                      peerStats={peerRow}
+                                    />
+                                  ) : null}
+                                </li>
+                              )
+                            })}
                           </ul>
                         </div>
                       ))}

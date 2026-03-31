@@ -97,7 +97,7 @@ export function AppShell() {
               }
               onClick={closeMobileNav}
             >
-              커리큘럼 코치
+              네비게이터
             </NavLink>
             <NavLink
               to="/d-agent/admission-coach"

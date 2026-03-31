@@ -350,6 +350,72 @@ export async function fetchCatalogMockCoachBundleForUser(userId: string): Promis
   return { dashboard, problemLatest }
 }
 
+const CATALOG_EXAM_RESULTS_PAGE = 1000
+const CATALOG_PROBLEM_ID_CHUNK = 200
+
+function chunkStringIds(ids: string[], chunkSize: number): string[][] {
+  const out: string[][] = []
+  for (let i = 0; i < ids.length; i += chunkSize) out.push(ids.slice(i, i + chunkSize))
+  return out
+}
+
+/**
+ * 카탈로그 모의 문항 제출 전 사용자 집계(프로토타입 RLS 전체 허용 전제).
+ * catalogId → userId → 누적 correct/total (막대 차트·동료 분포와 동일하게 모든 제출 행 반영)
+ */
+export async function fetchCatalogExamAggregatesByCatalogAndUser(): Promise<
+  Map<string, Map<string, { correct: number; total: number }>>
+> {
+  type ResultRow = { user_id: string; problem_id: string; is_correct: boolean }
+  const results: ResultRow[] = []
+  let offset = 0
+  for (;;) {
+    const { data, error } = await supabase
+      .from('fasttrack_mock_exam_catalog_problem_exam_results')
+      .select('user_id, problem_id, is_correct')
+      .range(offset, offset + CATALOG_EXAM_RESULTS_PAGE - 1)
+    if (error) throw error
+    const batch = (data ?? []) as ResultRow[]
+    results.push(...batch)
+    if (batch.length < CATALOG_EXAM_RESULTS_PAGE) break
+    offset += CATALOG_EXAM_RESULTS_PAGE
+  }
+
+  const problemToCatalog = new Map<string, string>()
+  const problemIds = [...new Set(results.map((r) => r.problem_id))]
+  for (const chunk of chunkStringIds(problemIds, CATALOG_PROBLEM_ID_CHUNK)) {
+    if (chunk.length === 0) continue
+    const { data, error } = await supabase
+      .from('fasttrack_mock_exam_catalog_problems')
+      .select('problem_id, catalog_id')
+      .in('problem_id', chunk)
+    if (error) throw error
+    for (const row of (data ?? []) as { problem_id: string; catalog_id: string }[]) {
+      problemToCatalog.set(row.problem_id, row.catalog_id)
+    }
+  }
+
+  const byCatalogUser = new Map<string, Map<string, { correct: number; total: number }>>()
+  for (const r of results) {
+    const catalogId = problemToCatalog.get(r.problem_id)
+    if (!catalogId) continue
+    let userMap = byCatalogUser.get(catalogId)
+    if (!userMap) {
+      userMap = new Map()
+      byCatalogUser.set(catalogId, userMap)
+    }
+    let a = userMap.get(r.user_id)
+    if (!a) {
+      a = { correct: 0, total: 0 }
+      userMap.set(r.user_id, a)
+    }
+    a.total += 1
+    if (r.is_correct) a.correct += 1
+  }
+
+  return byCatalogUser
+}
+
 export async function fetchCatalogMockDashboardForUser(
   userId: string,
 ): Promise<CatalogMockDashboardRow[]> {
