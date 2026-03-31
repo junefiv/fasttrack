@@ -38,6 +38,25 @@
   color: var(--text-muted, #94a3b8);
 }
 
+.problem-renderer__reading {
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(30, 41, 59, 0.35);
+}
+
+.problem-renderer__reading--inline {
+  margin-bottom: 0.25rem;
+}
+
+.problem-renderer__reading-diagrams {
+  margin-top: 0.5rem;
+}
+
+.problem-renderer__reading--inline .problem-renderer__body + .problem-renderer__reading-diagrams {
+  margin-top: 0.75rem;
+}
+
 .problem-renderer__instruction {
   padding-bottom: 0.25rem;
   border-bottom: 1px dashed rgba(148, 163, 184, 0.25);
@@ -57,6 +76,38 @@
   line-height: 1.55;
   color: var(--text-body, #c8d4e6);
   white-space: pre-wrap;
+}
+
+.problem-renderer__body u,
+.problem-renderer__qtext u,
+.problem-renderer__choice span u,
+.rich-exam-text__p u,
+.rich-exam-text__soft-para u {
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  text-decoration-thickness: from-font;
+}
+
+.rich-exam-text__p {
+  margin: 0 0 0.65em;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  color: inherit;
+}
+
+.rich-exam-text__p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-exam-text__soft-para {
+  display: block;
+  margin-top: 0.5em;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.rich-exam-text__soft-para:first-child {
+  margin-top: 0;
 }
 
 .problem-renderer__body--mono {

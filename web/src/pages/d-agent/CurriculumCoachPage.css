@@ -166,18 +166,11 @@
   border: 0;
 }
 
-/* 나의 현황 — 3열 카드 */
+/* 나의 현황 — 1열 3행 카드 */
 .curriculum-coach__status-row {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr;
-}
-
-@media (min-width: 960px) {
-  .curriculum-coach__status-row {
-    grid-template-columns: repeat(3, 1fr);
-    align-items: stretch;
-  }
 }
 
 .curriculum-coach__status-card {
@@ -210,6 +203,77 @@
   line-height: 1.5;
   color: var(--text-heading);
   flex: 1;
+}
+
+.curriculum-coach__mock-donut-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem 0.85rem;
+  margin: 0 0 0.5rem;
+  flex: 1;
+}
+
+.curriculum-coach__mock-donut-cell {
+  flex: 0 0 auto;
+}
+
+.curriculum-coach__mock-donut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 5.5rem;
+  margin: 0;
+}
+
+.curriculum-coach__mock-donut-ring {
+  position: relative;
+  width: fit-content;
+  margin-bottom: 0.35rem;
+}
+
+.curriculum-coach__mock-donut-svg {
+  display: block;
+}
+
+.curriculum-coach__mock-donut-track {
+  stroke: rgba(0, 0, 0, 0.22);
+}
+
+.curriculum-coach__mock-donut-fill {
+  stroke: var(--accent);
+  transition: stroke-dasharray 0.45s ease-out;
+}
+
+.curriculum-coach__mock-donut-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-heading);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.curriculum-coach__mock-donut-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  text-align: center;
+  line-height: 1.25;
+}
+
+.curriculum-coach__mock-donut-meta {
+  margin-top: 0.12rem;
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.2;
 }
 
 .curriculum-coach__status-card-sub {
@@ -339,4 +403,152 @@
   font-weight: 400;
   color: var(--text-muted);
   line-height: 1.35;
+}
+
+.curriculum-coach__detail-subtitle--chart {
+  margin-top: 1.15rem;
+}
+
+.curriculum-coach__detail-lead--tight {
+  margin-top: 0.25rem;
+  margin-bottom: 0.65rem;
+}
+
+.curriculum-coach__acc-chart {
+  margin-bottom: 0.25rem;
+}
+
+.curriculum-coach__acc-pillar-block {
+  margin-bottom: 1rem;
+}
+
+.curriculum-coach__acc-pillar-block:last-child {
+  margin-bottom: 0;
+}
+
+.curriculum-coach__acc-pillar-heading {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+
+.curriculum-coach__acc-bar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.curriculum-coach__acc-bar-item {
+  margin: 0;
+}
+
+.curriculum-coach__acc-bar-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.76rem;
+}
+
+.curriculum-coach__acc-bar-title {
+  font-weight: 600;
+  color: var(--text-heading);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.curriculum-coach__acc-bar-stat {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.curriculum-coach__acc-bar-track {
+  height: 11px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.curriculum-coach__acc-bar-fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), rgba(45, 212, 191, 0.85));
+  transition: width 0.35s ease-out;
+}
+
+.curriculum-coach__detail-subtitle--mock-ai {
+  margin-top: 1.35rem;
+}
+
+.curriculum-coach__mock-ai {
+  margin-bottom: 0.25rem;
+}
+
+.curriculum-coach__inline-code {
+  font-size: 0.85em;
+  padding: 0.08em 0.28em;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.curriculum-coach__mock-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.curriculum-coach__mock-ai-btn {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  background: linear-gradient(180deg, rgba(45, 212, 191, 0.18), rgba(0, 0, 0, 0.12));
+}
+
+.curriculum-coach__mock-ai-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.curriculum-coach__mock-ai-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.curriculum-coach__mock-ai-hint {
+  font-size: 0.72rem;
+}
+
+.curriculum-coach__mock-ai-error {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+}
+
+.curriculum-coach__mock-ai-output {
+  margin: 0.55rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 28rem;
+  overflow-y: auto;
+  color: var(--text-heading);
+  font-family: ui-sans-serif, system-ui, sans-serif;
 }

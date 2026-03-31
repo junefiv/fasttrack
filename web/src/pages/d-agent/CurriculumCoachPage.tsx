@@ -6,28 +6,106 @@ import {
 } from '../../lib/curriculumCoachDashboard'
 import { loadCurriculumCoachProfile } from '../../lib/curriculumCoachProfile'
 import {
+  aggregateMockCatalogPillarTotals,
   bankLeagueFromAccuracy,
-  buildMockExamMatrix,
+  buildMockCatalogAccuracyBars,
   demoPeerLectureMedianPercent,
-  type MonthRound,
+  formatMockCatalogPillarSummaryLine,
+  MOCK_CATALOG_PILLAR_SECTION_ORDER,
+  type MockCatalogAccuracyBar,
+  type MockSummaryPillar,
 } from '../../lib/curriculumCoachStatus'
 import { countWatchedSessions } from '../../lib/curriculumCoachWatch'
 import {
-  fetchAllMockTestScoresRaw,
+  groupMockProblemsByCatalog,
+  inferStrengthWeaknessFromRollups,
+  rollupMockProblemsByCategory,
+  rollupMockProblemsByTag,
+} from '../../lib/curriculumCoachMockInsights'
+import {
+  fetchCatalogMockCoachBundleForUser,
   fetchChapterNamesMap,
   fetchLectureSessionCount,
-  fetchMockExams,
-  fetchMockTestResultsForUser,
   fetchStudentStatsForUser,
   fetchSubjects,
+  type CatalogMockProblemLatestRow,
 } from '../../lib/fasttrackQueries'
+import {
+  analyzeMockCoachSnapshotWithGemini,
+  buildMockCoachAnalysisPayload,
+} from '../../lib/geminiMockCoachAnalysis'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
+import { messageFromUnknownError } from '../../lib/unknownError'
 import './CurriculumCoachPage.css'
 
 type DetailKey = 'mock' | 'bank' | 'lecture'
 
-const ROUNDS: MonthRound[] = ['3', '6', '9']
-const ROUND_LABEL: Record<MonthRound, string> = { '3': '3월', '6': '6월', '9': '9월' }
+const MOCK_DONUT_SIZE = 76
+const MOCK_DONUT_STROKE = 7
+
+function MockPillarDonut({
+  pillar,
+  correct,
+  total,
+}: {
+  pillar: MockSummaryPillar
+  correct: number
+  total: number
+}) {
+  const size = MOCK_DONUT_SIZE
+  const stroke = MOCK_DONUT_STROKE
+  const r = (size - stroke) / 2 - 1
+  const circumference = 2 * Math.PI * r
+  const frac = total > 0 ? correct / total : 0
+  const dash = frac * circumference
+  const pctText =
+    total > 0 ? `${Math.round((correct * 1000) / total) / 10}%` : '—'
+  const aria =
+    total > 0
+      ? `${pillar} 누적 정답률 ${pctText}, ${correct}문항 맞춤 전체 ${total}문항`
+      : `${pillar}, 제출 없음`
+
+  return (
+    <article className="curriculum-coach__mock-donut" aria-label={aria}>
+      <div className="curriculum-coach__mock-donut-ring">
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          className="curriculum-coach__mock-donut-svg"
+          aria-hidden
+        >
+          <g transform={`translate(${size / 2} ${size / 2})`}>
+            <circle
+              r={r}
+              className="curriculum-coach__mock-donut-track"
+              fill="none"
+              strokeWidth={stroke}
+            />
+            {total > 0 ? (
+              <circle
+                r={r}
+                className="curriculum-coach__mock-donut-fill"
+                fill="none"
+                strokeWidth={stroke}
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${circumference}`}
+                transform="rotate(-90)"
+              />
+            ) : null}
+          </g>
+        </svg>
+        <span className="curriculum-coach__mock-donut-pct" aria-hidden>
+          {pctText}
+        </span>
+      </div>
+      <span className="curriculum-coach__mock-donut-name">{pillar}</span>
+      <span className="curriculum-coach__mock-donut-meta">
+        {total > 0 ? `${correct}/${total}` : '제출 없음'}
+      </span>
+    </article>
+  )
+}
 
 export function CurriculumCoachPage() {
   const userId = useMemo(() => getFasttrackUserId(), [])
@@ -38,10 +116,19 @@ export function CurriculumCoachPage() {
     ReturnType<typeof aggregateStatsBySubject>
   >([])
   const [weakChapters, setWeakChapters] = useState<ReturnType<typeof pickWeakChapters>>([])
-  const [mockMatrix, setMockMatrix] = useState<ReturnType<typeof buildMockExamMatrix> | null>(null)
+  const [catalogMockDashboard, setCatalogMockDashboard] = useState<
+    Awaited<ReturnType<typeof fetchCatalogMockCoachBundleForUser>>['dashboard']
+  >([])
+  const [mockProblemLatest, setMockProblemLatest] = useState<CatalogMockProblemLatestRow[]>([])
+  const [mockCatalogAccuracy, setMockCatalogAccuracy] = useState<MockCatalogAccuracyBar[]>([])
   const [lectureSessionTotal, setLectureSessionTotal] = useState(0)
   const [watchedCount, setWatchedCount] = useState(0)
   const [expanded, setExpanded] = useState<DetailKey | null>(null)
+  const [mockAiAnalysis, setMockAiAnalysis] = useState<string | null>(null)
+  const [mockAiLoading, setMockAiLoading] = useState(false)
+  const [mockAiError, setMockAiError] = useState<string | null>(null)
+
+  const geminiApiKey = useMemo(() => import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? '', [])
 
   const peerDemo = useMemo(
     () => demoPeerAdmissionStats(profile.targetUniversity),
@@ -74,20 +161,12 @@ export function CurriculumCoachPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setMockAiAnalysis(null)
+    setMockAiError(null)
     try {
-      const [
-        subjects,
-        statRows,
-        userMocks,
-        allMockScores,
-        mockExams,
-        sessionCount,
-      ] = await Promise.all([
+      const [subjects, statRows, sessionCount] = await Promise.all([
         fetchSubjects(),
         fetchStudentStatsForUser(userId),
-        fetchMockTestResultsForUser(userId),
-        fetchAllMockTestScoresRaw(),
-        fetchMockExams(),
         fetchLectureSessionCount(),
       ])
 
@@ -99,14 +178,50 @@ export function CurriculumCoachPage() {
       const chapterNameById = await fetchChapterNamesMap(chapterIds)
       setWeakChapters(pickWeakChapters(statRows, subjectNameById, chapterNameById, 8, 2))
 
-      setMockMatrix(buildMockExamMatrix(subjects, mockExams, userMocks, allMockScores))
+      let catalogDashboard: Awaited<ReturnType<typeof fetchCatalogMockCoachBundleForUser>>['dashboard'] =
+        []
+      let problemLatest: CatalogMockProblemLatestRow[] = []
+      try {
+        const bundle = await fetchCatalogMockCoachBundleForUser(userId)
+        catalogDashboard = bundle.dashboard
+        problemLatest = bundle.problemLatest
+      } catch (catErr) {
+        console.error('[CurriculumCoach] 카탈로그 모의고사 집계만 실패 (나머지 현황은 유지)', {
+          message: messageFromUnknownError(catErr),
+          userId,
+          raw: catErr,
+        })
+      }
+      setCatalogMockDashboard(catalogDashboard)
+      setMockProblemLatest(problemLatest)
+      setMockCatalogAccuracy(
+        buildMockCatalogAccuracyBars(
+          subjects,
+          catalogDashboard.map((r) => ({
+            catalogId: r.catalogId,
+            title: r.title,
+            subject_id: r.subject_id,
+            correct: r.submissionsCorrect,
+            total: r.submissionsTotal,
+          })),
+        ),
+      )
       setLectureSessionTotal(sessionCount)
       setWatchedCount(countWatchedSessions())
     } catch (e) {
-      setError(e instanceof Error ? e.message : '데이터를 불러오지 못했습니다.')
+      const msg = messageFromUnknownError(e)
+      console.error('[CurriculumCoach] load failed — 나의 현황 로드 중단', {
+        message: msg,
+        userId,
+        raw: e,
+        stack: e instanceof Error ? e.stack : undefined,
+      })
+      setError(msg || '데이터를 불러오지 못했습니다.')
       setSubjectSummaries([])
       setWeakChapters([])
-      setMockMatrix(null)
+      setCatalogMockDashboard([])
+      setMockProblemLatest([])
+      setMockCatalogAccuracy([])
       setLectureSessionTotal(0)
       setWatchedCount(0)
     } finally {
@@ -122,13 +237,120 @@ export function CurriculumCoachPage() {
     setExpanded((prev) => (prev === key ? null : key))
   }
 
-  const mockSummaryLine = useMemo(() => {
-    if (!mockMatrix || mockMatrix.attemptCount === 0) {
-      return '아직 모의고사 응시 기록이 없습니다.'
+  const mockSummaryLine = useMemo(
+    () => formatMockCatalogPillarSummaryLine(mockCatalogAccuracy),
+    [mockCatalogAccuracy],
+  )
+
+  const mockPillarAgg = useMemo(
+    () => aggregateMockCatalogPillarTotals(mockCatalogAccuracy),
+    [mockCatalogAccuracy],
+  )
+
+  const mockPillarDonutOrder = useMemo((): MockSummaryPillar[] => {
+    const order: MockSummaryPillar[] = [...MOCK_CATALOG_PILLAR_SECTION_ORDER]
+    if (mockPillarAgg.기타.total > 0) order.push('기타')
+    return order
+  }, [mockPillarAgg])
+
+  const mockHasCatalogSubmissions = useMemo(
+    () => mockCatalogAccuracy.reduce((s, b) => s + b.total, 0) > 0,
+    [mockCatalogAccuracy],
+  )
+
+  const subjectLabelById = useMemo(
+    () => new Map(subjectSummaries.map((s) => [s.subjectId, s.subjectName])),
+    [subjectSummaries],
+  )
+
+  const mockCategoryRollups = useMemo(
+    () => rollupMockProblemsByCategory(mockProblemLatest),
+    [mockProblemLatest],
+  )
+  const mockTagRollups = useMemo(() => rollupMockProblemsByTag(mockProblemLatest), [mockProblemLatest])
+
+  const mockCategorySW = useMemo(
+    () => inferStrengthWeaknessFromRollups(mockCategoryRollups),
+    [mockCategoryRollups],
+  )
+  const mockTagSW = useMemo(
+    () => inferStrengthWeaknessFromRollups(mockTagRollups),
+    [mockTagRollups],
+  )
+
+  const mockProblemGroups = useMemo(
+    () => groupMockProblemsByCatalog(mockProblemLatest),
+    [mockProblemLatest],
+  )
+
+  const mockAccuracySections = useMemo(() => {
+    if (mockCatalogAccuracy.length === 0) return []
+    const map = new Map<string, MockCatalogAccuracyBar[]>()
+    for (const bar of mockCatalogAccuracy) {
+      const key = bar.pillar ?? bar.pillarLabel
+      const arr = map.get(key) ?? []
+      arr.push(bar)
+      map.set(key, arr)
     }
-    const p = mockMatrix.overallAvgPercentile
-    return `누적 응시 ${mockMatrix.attemptCount}회 · 평균 상위 ${p !== null ? `${p}%` : '—'} (응시한 시험 기준)`
-  }, [mockMatrix])
+    const sections: { heading: string; bars: MockCatalogAccuracyBar[] }[] = []
+    const seen = new Set<string>()
+    for (const h of MOCK_CATALOG_PILLAR_SECTION_ORDER) {
+      const b = map.get(h)
+      if (b?.length) {
+        sections.push({ heading: h, bars: b })
+        seen.add(h)
+      }
+    }
+    for (const [h, bars] of map) {
+      if (!seen.has(h)) sections.push({ heading: h, bars })
+    }
+    return sections
+  }, [mockCatalogAccuracy])
+
+  const mockAnalysisPayload = useMemo(() => {
+    if (catalogMockDashboard.length === 0 && mockProblemLatest.length === 0) return null
+    return buildMockCoachAnalysisPayload({
+      summaryLine: mockSummaryLine,
+      mockAccuracySections,
+      categoryRollups: mockCategoryRollups,
+      tagRollups: mockTagRollups,
+      categorySW: mockCategorySW,
+      tagSW: mockTagSW,
+      problemGroups: mockProblemGroups,
+      subjectLabelById,
+    })
+  }, [
+    catalogMockDashboard,
+    mockSummaryLine,
+    mockAccuracySections,
+    mockCategoryRollups,
+    mockTagRollups,
+    mockCategorySW,
+    mockTagSW,
+    mockProblemGroups,
+    subjectLabelById,
+    mockProblemLatest,
+  ])
+
+  const runMockGeminiAnalysis = useCallback(async () => {
+    if (!geminiApiKey) {
+      setMockAiError('VITE_GEMINI_API_KEY 가 web/.env 에 설정되어 있는지 확인하세요.')
+      return
+    }
+    const payload = mockAnalysisPayload
+    if (!payload) return
+    setMockAiLoading(true)
+    setMockAiError(null)
+    try {
+      const text = await analyzeMockCoachSnapshotWithGemini({ apiKey: geminiApiKey, payload })
+      setMockAiAnalysis(text)
+    } catch (e) {
+      setMockAiAnalysis(null)
+      setMockAiError(messageFromUnknownError(e))
+    } finally {
+      setMockAiLoading(false)
+    }
+  }, [geminiApiKey, mockAnalysisPayload])
 
   return (
     <div className="curriculum-coach">
@@ -195,9 +417,29 @@ export function CurriculumCoachPage() {
             <article className="curriculum-coach__status-card">
               <h3 className="curriculum-coach__status-card-title">모의고사</h3>
               <p className="curriculum-coach__status-card-desc">
-                국어·영어·수학별 3·6·9월 및 제공 시험 대비 내 점수·상위 백분위
+                카탈로그 시험(시리즈)별 누적 제출 정답률과 요약 지표
               </p>
-              <p className="curriculum-coach__status-card-metric">{mockSummaryLine}</p>
+              {mockHasCatalogSubmissions ? (
+                <div
+                  className="curriculum-coach__mock-donut-row"
+                  role="list"
+                  aria-label="과목별 누적 제출 정답률"
+                >
+                  {mockPillarDonutOrder.map((pillar) => (
+                    <div key={pillar} className="curriculum-coach__mock-donut-cell" role="listitem">
+                      <MockPillarDonut
+                        pillar={pillar}
+                        correct={mockPillarAgg[pillar].correct}
+                        total={mockPillarAgg[pillar].total}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="curriculum-coach__status-card-metric">
+                  아직 카탈로그 모의고사 문항 제출 기록이 없습니다.
+                </p>
+              )}
               <button
                 type="button"
                 className="curriculum-coach__detail-btn"
@@ -206,73 +448,84 @@ export function CurriculumCoachPage() {
               >
                 {expanded === 'mock' ? '접기' : '자세히 보기'}
               </button>
-              {expanded === 'mock' && mockMatrix ? (
+              {expanded === 'mock' ? (
                 <div className="curriculum-coach__detail-panel" role="region" aria-label="모의고사 상세">
-                  <p className="curriculum-coach__detail-lead">
-                    시험 시행 월(응시일 기준)과 과목으로 묶었습니다. 동일 칸에 여러 시험이 있으면 백분위는
-                    평균입니다.
-                  </p>
-                  <div className="curriculum-coach__matrix-wrap">
-                    <table className="curriculum-coach__matrix">
-                      <thead>
-                        <tr>
-                          <th scope="col">과목</th>
-                          {ROUNDS.map((r) => (
-                            <th key={r} scope="col">
-                              {ROUND_LABEL[r]} 모의
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mockMatrix.rows.map((row) => (
-                          <tr key={row.pillar}>
-                            <th scope="row">{row.pillar}</th>
-                            {ROUNDS.map((r) => {
-                              const c = row.cells[r]
-                              const show =
-                                c.myBestScore !== null
-                                  ? `${c.myBestScore}점 · 상위 ${c.percentile ?? '—'}%`
-                                  : c.examNames.length
-                                    ? '미응시'
-                                    : '—'
-                              return (
-                                <td key={r}>
-                                  <span className="curriculum-coach__matrix-cell">{show}</span>
-                                  {c.examNames.length > 0 ? (
-                                    <span className="curriculum-coach__matrix-sub">
-                                      {c.examNames.slice(0, 2).join(', ')}
-                                      {c.examNames.length > 2 ? '…' : ''}
-                                    </span>
-                                  ) : null}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="curriculum-coach__mock-ai" aria-label="Gemini 모의고사 해석">
+                    
+                    <div className="curriculum-coach__mock-ai-actions">
+                      <button
+                        type="button"
+                        className="curriculum-coach__mock-ai-btn"
+                        disabled={!mockAnalysisPayload || mockAiLoading}
+                        onClick={() => void runMockGeminiAnalysis()}
+                      >
+                        {mockAiLoading ? '분석 중…' : '강점·취약점 분석 요청'}
+                      </button>
+                      {!geminiApiKey ? (
+                        <span className="curriculum-coach__detail-muted curriculum-coach__mock-ai-hint">
+                          API 키가 없어 요청할 수 없습니다.
+                        </span>
+                      ) : null}
+                    </div>
+                    {mockAiError ? (
+                      <p className="curriculum-coach__error curriculum-coach__mock-ai-error" role="alert">
+                        {mockAiError}
+                      </p>
+                    ) : null}
+                    {mockAiAnalysis ? (
+                      <pre className="curriculum-coach__mock-ai-output">{mockAiAnalysis}</pre>
+                    ) : null}
                   </div>
-                  {mockMatrix.rows.some((r) => r.otherExams.length > 0) ? (
-                    <>
-                      <h4 className="curriculum-coach__detail-subtitle">그 외 제공 모의고사</h4>
-                      <ul className="curriculum-coach__detail-list">
-                        {mockMatrix.rows.flatMap((row) =>
-                          row.otherExams.map((o) => (
-                            <li key={o.examId}>
-                              <strong>{row.pillar}</strong> · {o.name}:{' '}
-                              {o.myScore !== null
-                                ? `${o.myScore}점 · 상위 ${o.percentile ?? '—'}%`
-                                : '미응시'}
-                            </li>
-                          )),
-                        )}
-                      </ul>
-                    </>
-                  ) : null}
-                  <p className="curriculum-coach__detail-foot">
-                    백분위는 동일 시험(reference) 전체 응시 로그 기준입니다. 데이터가 적으면 변동이 큽니다.
+                  
+                  <h4 className="curriculum-coach__detail-subtitle curriculum-coach__detail-subtitle--chart">
+                    과목 · 시험별 문항 정답률 (누적 제출 건수 기준)
+                  </h4>
+                  <p className="curriculum-coach__detail-lead curriculum-coach__detail-lead--tight">
+                    동일 문항을 여러 번 제출하면 건수만큼 반영됩니다.
                   </p>
+                  {mockAccuracySections.length === 0 ? (
+                    <p className="curriculum-coach__detail-muted">
+                      카탈로그 문항 제출 기록이 없으면 차트가 비어 있습니다.
+                    </p>
+                  ) : (
+                    <div
+                      className="curriculum-coach__acc-chart"
+                      role="region"
+                      aria-label="과목 및 시험 시리즈별 정답률"
+                    >
+                      {mockAccuracySections.map((sec) => (
+                        <div key={sec.heading} className="curriculum-coach__acc-pillar-block">
+                          <h5 className="curriculum-coach__acc-pillar-heading">{sec.heading}</h5>
+                          <ul className="curriculum-coach__acc-bar-list">
+                            {sec.bars.map((bar) => (
+                              <li key={bar.catalogId} className="curriculum-coach__acc-bar-item">
+                                <div className="curriculum-coach__acc-bar-label">
+                                  <span className="curriculum-coach__acc-bar-title">{bar.examLabel}</span>
+                                  <span className="curriculum-coach__acc-bar-stat" aria-hidden>
+                                    {bar.accuracyPercent}% · {bar.correct}/{bar.total}문항
+                                  </span>
+                                </div>
+                                <div
+                                  className="curriculum-coach__acc-bar-track"
+                                  role="img"
+                                  aria-label={`${sec.heading} ${bar.examLabel} 정답률 ${bar.accuracyPercent}퍼센트, ${bar.correct}개 맞춤 전체 ${bar.total}문항`}
+                                >
+                                  <div
+                                    className="curriculum-coach__acc-bar-fill"
+                                    style={{ width: `${Math.min(100, bar.accuracyPercent)}%` }}
+                                  />
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  
+
+                  
                 </div>
               ) : null}
             </article>

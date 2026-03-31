@@ -1,30 +1,12 @@
-const STORAGE_KEY = 'fasttrack_dev_user_id'
+/**
+ * 프로토타입 공용 사용자(로그인 없음). 동일 앱 링크에 접속한 모두 동일 `user_id`로 Supabase에 기록됩니다.
+ * 다른 ID를 쓰려면 `VITE_FASTTRACK_DEV_USER_ID`를 설정하세요.
+ */
+export const FASTTRACK_PROTOTYPE_SHARED_USER_ID = '11111111-1111-4111-8111-111111111111'
 
-function randomUuid(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
-
-/** 프로토타입: .env 고정 UUID, 없으면 localStorage에 생성해 유지 */
+/** 프로토타입: `VITE_FASTTRACK_DEV_USER_ID`가 있으면 우선, 없으면 공용 UUID */
 export function getFasttrackUserId(): string {
   const fromEnv = import.meta.env.VITE_FASTTRACK_DEV_USER_ID?.trim()
   if (fromEnv) return fromEnv
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) return stored
-    const created = randomUuid()
-    localStorage.setItem(STORAGE_KEY, created)
-    console.warn(
-      '[FASTTRACK] VITE_FASTTRACK_DEV_USER_ID 가 없어 임시 사용자 UUID를 localStorage에 저장했습니다.',
-    )
-    return created
-  } catch {
-    console.warn('[FASTTRACK] localStorage 사용 불가 — 세션마다 새 UUID')
-    return randomUuid()
-  }
+  return FASTTRACK_PROTOTYPE_SHARED_USER_ID
 }

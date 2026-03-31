@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button, Drawer } from '@mantine/core'
+import { useDisclosure, useMediaQuery } from '@mantine/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ProblemRenderer } from '../../components/ProblemRenderer'
+import { ReadingBodyDiagrams } from '../../components/ReadingBodyDiagrams'
+import { renderExamRichText } from '../../lib/richExamText'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
 import {
   fetchCatalogProblemsForTake,
@@ -14,12 +18,19 @@ import { upsertStudentStatsAfterSession } from '../../lib/fasttrackStats'
 import type { FasttrackProblemRow } from '../../types/fasttrack'
 import './MockExamTakePage.css'
 
-/** 응시 UI에 쓰는 필드만 정규화 (question_number·instruction·content·options; 채점용 correct_answer는 화면에 안 씀) */
+/**
+ * 응시 UI 정규화.
+ * 카탈로그: reading_body=본문(content), passage=지문(additional_passage), instruction=발문.
+ * 연동 시험(fasttrack_problems): reading_body 없음, passage=지문·문항 통합 블록.
+ */
 type MockTakeSheetProblem = {
   id: string
   question_number: number
   instruction: string | null
-  content: string | null
+  reading_body: string | null
+  diagram: string | null
+  diagram_url: string | null
+  passage: string | null
   options: unknown
   correct_answer: string
   examRow?: FasttrackProblemRow
@@ -30,14 +41,24 @@ function mapCatalogRowToSheet(r: {
   question_number: number
   instruction: string | null
   content: string | null
+  additional_passage: string | null
+  diagram: string | null
+  diagram_url: string | null
   options: unknown
   answer: number
 }): MockTakeSheetProblem {
+  const rb = r.content?.trim() ? r.content : null
+  const ap = r.additional_passage?.trim() ? r.additional_passage : null
+  const dg = r.diagram?.trim() ? r.diagram : null
+  const du = r.diagram_url?.trim() ? r.diagram_url : null
   return {
     id: r.problem_id,
     question_number: r.question_number,
     instruction: r.instruction,
-    content: r.content,
+    reading_body: rb,
+    diagram: dg,
+    diagram_url: du,
+    passage: ap,
     options: r.options,
     correct_answer: String(r.answer),
   }
@@ -45,28 +66,50 @@ function mapCatalogRowToSheet(r: {
 
 function mapExamRowToSheet(p: FasttrackProblemRow): MockTakeSheetProblem {
   const merged = [p.passage, p.question_text].filter(Boolean).join('\n\n').trim()
+  const dg = p.diagram?.trim() ? p.diagram : null
+  const du = p.diagram_url?.trim() ? p.diagram_url : null
   return {
     id: p.id,
     question_number: p.problem_number != null && p.problem_number > 0 ? p.problem_number : 0,
     instruction: p.instruction_text ?? null,
-    content: merged.length > 0 ? merged : null,
+    reading_body: null,
+    diagram: dg,
+    diagram_url: du,
+    passage: merged.length > 0 ? merged : null,
     options: p.choices,
     correct_answer: p.correct_answer,
     examRow: p,
   }
 }
 
-/** 미리보기 스텁을 카탈로그 4필드 표시에 맞춤: 지문+발문을 content 한 블록으로 */
+/** 미리보기: 지문(passage)과 문항(question_text)이 모두 있으면 본문/발문·지문 분할 예시 */
 function mapPreviewStubToSheet(p: FasttrackProblemRow): MockTakeSheetProblem {
-  const merged = [p.passage, p.question_text].filter(Boolean).join('\n\n').trim()
+  const hasSplit = Boolean(p.passage?.trim()) && Boolean(p.question_text?.trim())
+  const passageMerged = hasSplit
+    ? [p.reference_view, p.question_text].filter(Boolean).join('\n\n').trim()
+    : [p.passage, p.question_text].filter(Boolean).join('\n\n').trim()
   return {
     id: p.id,
     question_number: p.problem_number != null && p.problem_number > 0 ? p.problem_number : 0,
     instruction: p.instruction_text ?? null,
-    content: merged.length > 0 ? merged : null,
+    reading_body: hasSplit ? p.passage ?? null : null,
+    diagram: null,
+    diagram_url: null,
+    passage: passageMerged.length > 0 ? passageMerged : null,
     options: p.choices,
     correct_answer: p.correct_answer,
   }
+}
+
+function readingBodyKey(body: string | null | undefined): string {
+  return (body ?? '').trim()
+}
+
+function problemHasReadingPanel(p: MockTakeSheetProblem | undefined): boolean {
+  if (!p) return false
+  return Boolean(
+    p.reading_body?.trim() || p.diagram?.trim() || p.diagram_url?.trim(),
+  )
 }
 
 export function MockExamTakePage() {
@@ -170,6 +213,25 @@ export function MockExamTakePage() {
   }, [loading])
 
   const current = problems[idx]
+  const isNarrow = useMediaQuery('(max-width: 960px)')
+  const [readingDrawerOpen, { open: openReadingDrawer, close: closeReadingDrawer }] = useDisclosure(false)
+  const hasReadingPanel = problemHasReadingPanel(current)
+  const showReadingAside = hasReadingPanel && !isNarrow
+
+  const passageGroupStarts = useMemo(
+    () =>
+      problems.map((p, i) => {
+        const k = readingBodyKey(p.reading_body)
+        if (!k) return false
+        if (i === 0) return true
+        return readingBodyKey(problems[i - 1].reading_body) !== k
+      }),
+    [problems],
+  )
+
+  useEffect(() => {
+    closeReadingDrawer()
+  }, [idx, closeReadingDrawer])
 
   const fmt = useCallback((sec: number) => {
     const m = Math.floor(sec / 60)
@@ -260,17 +322,23 @@ export function MockExamTakePage() {
 
       {err ? <p className="mock-take__err">{err}</p> : null}
 
-      <div className="mock-take__body">
+      <div
+        className={`mock-take__body${showReadingAside ? ' mock-take__body--with-reading' : ''}`}
+      >
         <nav className="mock-take__nav" aria-label="문항 번호">
           {problems.map((p, i) => {
             const n = p.question_number > 0 ? p.question_number : i + 1
+            const groupStart = passageGroupStarts[i]
             return (
               <button
                 key={p.id}
                 type="button"
+                title={groupStart ? '이 문항부터 읽기 자료(본문)가 바뀝니다' : undefined}
                 className={`mock-take__num${i === idx ? ' mock-take__num--current' : ''}${
                   flagged[p.id] ? ' mock-take__num--flag' : ''
-                }${answers[p.id] ? ' mock-take__num--done' : ''}`}
+                }${answers[p.id] ? ' mock-take__num--done' : ''}${
+                  groupStart ? ' mock-take__num--passage-group-start' : ''
+                }`}
                 onClick={() => setIdx(i)}
               >
                 {n}
@@ -278,25 +346,52 @@ export function MockExamTakePage() {
             )
           })}
         </nav>
+        {showReadingAside ? (
+          <aside className="mock-take__reading" aria-label="읽기 자료(본문)">
+            <p className="mock-take__reading-label">본문</p>
+            <div className="mock-take__reading-scroll">
+              {current.reading_body?.trim() ? renderExamRichText(current.reading_body.trim()) : null}
+              <ReadingBodyDiagrams diagram={current.diagram} diagramUrl={current.diagram_url} />
+            </div>
+          </aside>
+        ) : null}
         <div className="mock-take__main">
           <div className="mock-take__toolbar">
             <span className="mock-take__progress">
               {displayProblemNumber} / {problems.length}
             </span>
-            <label className="mock-take__flag">
-              <input
-                type="checkbox"
-                checked={!!flagged[current.id]}
-                onChange={(e) => setFlagged((f) => ({ ...f, [current.id]: e.target.checked }))}
-              />
-              플래그
-            </label>
+            <div className="mock-take__toolbar-right">
+              {hasReadingPanel && isNarrow ? (
+                <Button
+                  type="button"
+                  variant="light"
+                  color="cyan"
+                  size="xs"
+                  radius="md"
+                  onClick={openReadingDrawer}
+                >
+                  본문 보기
+                </Button>
+              ) : null}
+              <label className="mock-take__flag">
+                <input
+                  type="checkbox"
+                  checked={!!flagged[current.id]}
+                  onChange={(e) => setFlagged((f) => ({ ...f, [current.id]: e.target.checked }))}
+                />
+                플래그
+              </label>
+            </div>
           </div>
           <ProblemRenderer
             instructionText={current.instruction}
             problemNumber={displayProblemNumber}
             questionText=""
-            passage={current.content}
+            readingBody={current.reading_body}
+            suppressReadingBody={hasReadingPanel}
+            readingDiagram={current.diagram}
+            readingDiagramUrl={current.diagram_url}
+            passage={current.passage}
             choices={current.options}
             name={`q-${current.id}`}
             value={answers[current.id] ?? ''}
@@ -316,6 +411,21 @@ export function MockExamTakePage() {
           </div>
         </div>
       </div>
+
+      <Drawer
+        opened={readingDrawerOpen}
+        onClose={closeReadingDrawer}
+        position="bottom"
+        size="85%"
+        title="본문"
+        padding="md"
+        styles={{ body: { paddingTop: 4 } }}
+      >
+        <div className="mock-take__drawer-reading">
+          {current.reading_body?.trim() ? renderExamRichText(current.reading_body.trim()) : null}
+          <ReadingBodyDiagrams diagram={current.diagram} diagramUrl={current.diagram_url} />
+        </div>
+      </Drawer>
     </div>
   )
 }

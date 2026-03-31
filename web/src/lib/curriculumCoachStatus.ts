@@ -3,7 +3,7 @@ import type { FasttrackMockExamRow, FasttrackTestResultRow, SubjectRow } from '.
 export type SubjectPillar = '국어' | '영어' | '수학'
 export type MonthRound = '3' | '6' | '9'
 
-const PILLARS: SubjectPillar[] = ['국어', '영어', '수학']
+export const SUBJECT_PILLARS_ORDER: SubjectPillar[] = ['국어', '영어', '수학']
 const ROUNDS: MonthRound[] = ['3', '6', '9']
 
 export function subjectPillarFromSubject(subject: SubjectRow): SubjectPillar | null {
@@ -15,8 +15,30 @@ export function subjectPillarFromSubject(subject: SubjectRow): SubjectPillar | n
   return null
 }
 
+/** 카탈로그 모의 집계·막대용: 국영수 + 사회·과학 탐구 구분(매칭 실패 시 null → 기타) */
+export type CatalogMockPillar = SubjectPillar | '사회' | '과학'
+
+export function catalogMockPillarFromSubject(subject: SubjectRow): CatalogMockPillar | null {
+  const core = subjectPillarFromSubject(subject)
+  if (core) return core
+  const n = subject.name.trim()
+  const c = (subject.category ?? '').trim()
+  const hay = `${n} ${c}`
+  if (/과학|화학|물리|생명|지구과학|과탐|생명과학|물리학|화학원리/i.test(hay)) return '과학'
+  if (
+    /사회|사탐|한국사|세계사|동아시아|경제와|정치와|사회문화|생활과\s*윤리|윤리와\s*사상|한국지리|세계지리|통합사회|행정법|국제법|교과사회|법과\s*사회/i.test(
+      hay,
+    )
+  ) {
+    return '사회'
+  }
+  return null
+}
+
 export function monthRoundFromExamDate(examDate: string): MonthRound | null {
+  if (typeof examDate !== 'string' || examDate.length < 7) return null
   const m = parseInt(examDate.slice(5, 7), 10)
+  if (!Number.isFinite(m)) return null
   if (m === 3) return '3'
   if (m === 6) return '6'
   if (m === 9) return '9'
@@ -124,7 +146,7 @@ export function buildMockExamMatrix(
     return { examIds, examNames, myBestScore, percentile }
   }
 
-  const rows: MockExamMatrixRow[] = PILLARS.map((pillar) => {
+  const rows: MockExamMatrixRow[] = SUBJECT_PILLARS_ORDER.map((pillar) => {
     const cells = {
       '3': cellFor(pillar, '3'),
       '6': cellFor(pillar, '6'),
@@ -163,6 +185,118 @@ export function buildMockExamMatrix(
       : null
 
   return { rows, overallAvgPercentile, attemptCount }
+}
+
+export type MockCatalogAccuracyBar = {
+  catalogId: string
+  pillar: CatalogMockPillar | null
+  pillarLabel: string
+  examLabel: string
+  correct: number
+  total: number
+  accuracyPercent: number
+}
+
+/** 막대 차트 섹션 순서(국→영→수→사→과, 이후 과목명·기타) */
+export const MOCK_CATALOG_PILLAR_SECTION_ORDER: CatalogMockPillar[] = [
+  '국어',
+  '영어',
+  '수학',
+  '사회',
+  '과학',
+]
+
+/** 카탈로그 문항 제출 집계 → 과목(기둥)·시험 시리즈별 정답률 막대용 데이터 */
+export function buildMockCatalogAccuracyBars(
+  subjects: SubjectRow[],
+  stats: {
+    catalogId: string
+    title: string
+    subject_id: string
+    correct: number
+    total: number
+  }[],
+): MockCatalogAccuracyBar[] {
+  const nameById = new Map(subjects.map((s) => [s.id, s.name]))
+  const pillarRank: Record<CatalogMockPillar, number> = {
+    국어: 0,
+    영어: 1,
+    수학: 2,
+    사회: 3,
+    과학: 4,
+  }
+  return stats
+    .map((s) => {
+      const subj = subjects.find((x) => x.id === s.subject_id)
+      const pillar = subj ? catalogMockPillarFromSubject(subj) : null
+      const pillarLabel = pillar ?? nameById.get(s.subject_id) ?? '기타'
+      const acc = s.total > 0 ? Math.round((s.correct * 1000) / s.total) / 10 : 0
+      return {
+        catalogId: s.catalogId,
+        pillar,
+        pillarLabel,
+        examLabel: s.title,
+        correct: s.correct,
+        total: s.total,
+        accuracyPercent: acc,
+      }
+    })
+    .sort((a, b) => {
+      const pa = a.pillar !== null ? pillarRank[a.pillar] : 99
+      const pb = b.pillar !== null ? pillarRank[b.pillar] : 99
+      if (pa !== pb) return pa - pb
+      return a.examLabel.localeCompare(b.examLabel, 'ko')
+    })
+}
+
+/** 카드 요약용 집계 축 */
+export type MockSummaryPillar = CatalogMockPillar | '기타'
+
+/** 누적 제출 건수 기준(막대 차트와 동일). pillar 미매칭은 기타 */
+export function aggregateMockCatalogPillarTotals(
+  bars: MockCatalogAccuracyBar[],
+): Record<MockSummaryPillar, { correct: number; total: number }> {
+  const z = (): { correct: number; total: number } => ({ correct: 0, total: 0 })
+  const out: Record<MockSummaryPillar, { correct: number; total: number }> = {
+    국어: z(),
+    영어: z(),
+    수학: z(),
+    사회: z(),
+    과학: z(),
+    기타: z(),
+  }
+  for (const b of bars) {
+    const p = b.pillar
+    if (p === null) {
+      out.기타.correct += b.correct
+      out.기타.total += b.total
+    } else {
+      out[p].correct += b.correct
+      out[p].total += b.total
+    }
+  }
+  return out
+}
+
+export function formatMockCatalogPillarSummaryLine(bars: MockCatalogAccuracyBar[]): string {
+  if (bars.length === 0) {
+    return '아직 카탈로그 모의고사 문항 제출 기록이 없습니다.'
+  }
+  const submissionTotal = bars.reduce((s, b) => s + b.total, 0)
+  if (submissionTotal === 0) {
+    return '아직 카탈로그 모의고사 문항 제출 기록이 없습니다.'
+  }
+  const agg = aggregateMockCatalogPillarTotals(bars)
+  const order: MockSummaryPillar[] = [...MOCK_CATALOG_PILLAR_SECTION_ORDER]
+  if (agg.기타.total > 0) order.push('기타')
+  return order
+    .map((name) => {
+      const { correct, total } = agg[name]
+      if (total === 0) return `${name} 총 정답률 —`
+      const pct = Math.round((correct * 1000) / total) / 10
+      return `${name} 총 정답률 ${pct}% (${correct}/${total})`
+    })
+    .join(' · ')
 }
 
 /** 정답률 구간으로 리그 라벨 (데모 티어) */

@@ -1,4 +1,6 @@
 import type { ChoiceOption } from '../types/fasttrack'
+import { renderExamRichText } from '../lib/richExamText'
+import { ReadingBodyDiagrams } from './ReadingBodyDiagrams'
 import './ProblemRenderer.css'
 
 function parseChoices(raw: unknown): ChoiceOption[] {
@@ -25,6 +27,14 @@ type Props = {
   keywords?: string[] | null
   recommendedTimeSec?: number | null
   difficultyLabel?: string | null
+  /** 카탈로그 등: 공유 읽기 자료(본문). 있으면 발문/지문 라벨을 구분해 씀 */
+  readingBody?: string | null
+  /** true면 본문 블록을 여기서 렌더하지 않음(부모가 옆 패널·Drawer 등에 표시) */
+  suppressReadingBody?: boolean
+  /** 본문 영역 도식(텍스트/SVG) */
+  readingDiagram?: string | null
+  /** 본문 영역 도식 이미지 URL */
+  readingDiagramUrl?: string | null
   passage?: string | null
   referenceView?: string | null
   choices: unknown
@@ -52,6 +62,10 @@ export function ProblemRenderer({
   keywords,
   recommendedTimeSec,
   difficultyLabel,
+  readingBody,
+  suppressReadingBody,
+  readingDiagram,
+  readingDiagramUrl,
   passage,
   referenceView,
   choices,
@@ -63,6 +77,12 @@ export function ProblemRenderer({
   correctAnswer,
 }: Props) {
   const opts = parseChoices(choices)
+  const hasReadingText = Boolean(readingBody?.trim())
+  const hasReadingDiagrams = Boolean(readingDiagram?.trim() || readingDiagramUrl?.trim())
+  const hasReading = hasReadingText || hasReadingDiagrams
+  const showReadingHere = hasReading && !suppressReadingBody
+  const instructionLabel = hasReading ? '발문' : '지시문'
+  const passageLabel = '지문'
   const metaParts: string[] = []
   if (problemNumber != null && problemNumber > 0) metaParts.push(`문제 ${problemNumber}`)
   if (questionCategory?.trim()) metaParts.push(questionCategory.trim())
@@ -92,28 +112,43 @@ export function ProblemRenderer({
           ) : null}
         </div>
       ) : null}
+      {showReadingHere ? (
+        <div className="problem-renderer__reading problem-renderer__reading--inline">
+          <p className="problem-renderer__label">본문</p>
+          {hasReadingText ? (
+            <div className="problem-renderer__body">{renderExamRichText(readingBody!.trim())}</div>
+          ) : null}
+          <ReadingBodyDiagrams
+            diagram={readingDiagram}
+            diagramUrl={readingDiagramUrl}
+            className="reading-body-diagrams problem-renderer__reading-diagrams"
+          />
+        </div>
+      ) : null}
       {instructionText?.trim() ? (
         <div className="problem-renderer__instruction">
-          <p className="problem-renderer__label">지시문</p>
-          <div className="problem-renderer__body">{instructionText.trim()}</div>
+          <p className="problem-renderer__label">{instructionLabel}</p>
+          <div className="problem-renderer__body">{renderExamRichText(instructionText.trim())}</div>
         </div>
       ) : null}
       {passage ? (
         <div className="problem-renderer__passage">
-          <p className="problem-renderer__label">지문</p>
-          <div className="problem-renderer__body">{passage}</div>
+          <p className="problem-renderer__label">{passageLabel}</p>
+          <div className="problem-renderer__body">{renderExamRichText(passage)}</div>
         </div>
       ) : null}
       {referenceView ? (
         <div className="problem-renderer__ref">
           <p className="problem-renderer__label">참고</p>
-          <div className="problem-renderer__body problem-renderer__body--mono">{referenceView}</div>
+          <div className="problem-renderer__body problem-renderer__body--mono">
+            {renderExamRichText(referenceView)}
+          </div>
         </div>
       ) : null}
       {questionText?.trim() ? (
         <div className="problem-renderer__question">
           <p className="problem-renderer__label">문항</p>
-          <p className="problem-renderer__qtext">{questionText.trim()}</p>
+          <div className="problem-renderer__qtext">{renderExamRichText(questionText.trim())}</div>
         </div>
       ) : null}
       {opts.length > 0 ? (
@@ -133,7 +168,7 @@ export function ProblemRenderer({
                     onChange={() => onChange(o.id)}
                     disabled={disabled}
                   />
-                  <span>{o.text}</span>
+                  <span>{renderExamRichText(o.text, { softParagraphs: true })}</span>
                 </label>
               </li>
             )
