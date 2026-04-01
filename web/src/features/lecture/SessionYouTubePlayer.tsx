@@ -25,14 +25,17 @@ type Props = {
   videoId: string
   className?: string
   onPlayerStateChange?: () => void
+  /** 플레이어 준비 직후 한 번만 이동(초). 결과지·공유 URL의 `t` 파라미터용 */
+  initialSeekSec?: number | null
 }
 
 export const SessionYouTubePlayer = forwardRef<SessionPlayerHandle, Props>(
-  function SessionYouTubePlayer({ videoId, className, onPlayerStateChange }, ref) {
+  function SessionYouTubePlayer({ videoId, className, onPlayerStateChange, initialSeekSec }, ref) {
     const uid = useId().replace(/:/g, '')
     const hostId = useMemo(() => `yt-host-${uid}`, [uid])
     const playerRef = useRef<YTPlayerInstance | null>(null)
     const [ready, setReady] = useState(false)
+    const initialSeekDoneRef = useRef(false)
 
     useImperativeHandle(ref, () => ({
       pause: () => {
@@ -65,6 +68,10 @@ export const SessionYouTubePlayer = forwardRef<SessionPlayerHandle, Props>(
     onStateRef.current = onPlayerStateChange
 
     useEffect(() => {
+      initialSeekDoneRef.current = false
+    }, [videoId, initialSeekSec])
+
+    useEffect(() => {
       let cancelled = false
       const ytHolder: { current: YTPlayerInstance | null } = { current: null }
 
@@ -85,6 +92,15 @@ export const SessionYouTubePlayer = forwardRef<SessionPlayerHandle, Props>(
               if (cancelled) return
               playerRef.current = e.target
               setReady(true)
+              const t = initialSeekSec
+              if (!initialSeekDoneRef.current && t != null && Number.isFinite(t) && t >= 0) {
+                initialSeekDoneRef.current = true
+                try {
+                  e.target.seekTo(t, true)
+                } catch {
+                  /* noop */
+                }
+              }
             },
             onStateChange: () => {
               onStateRef.current?.()
@@ -103,7 +119,7 @@ export const SessionYouTubePlayer = forwardRef<SessionPlayerHandle, Props>(
           /* noop */
         }
       }
-    }, [hostId, videoId])
+    }, [hostId, videoId, initialSeekSec])
 
     return (
       <div className={`session-yt ${className ?? ''}`} data-ready={ready}>

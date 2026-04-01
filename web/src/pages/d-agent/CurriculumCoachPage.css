@@ -282,6 +282,23 @@
   color: var(--text-muted);
 }
 
+.curriculum-coach__bank-catalog {
+  margin: 0 0 0.75rem;
+  padding-left: 1.15rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-heading);
+}
+
+.curriculum-coach__bank-catalog li {
+  margin-bottom: 0.4rem;
+}
+
+.curriculum-coach__bank-catalog-meta {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .curriculum-coach__detail-btn {
   margin-top: auto;
   align-self: flex-start;

@@ -99,5 +99,43 @@ export type FasttrackMockExamCatalogRow = {
   title: string
   description: string
   sort_order: number
-  linked_mock_exam_id: string | null
+}
+
+/** 카탈로그 문항 → 동일 회차 강의의 교재 페이지·자막 구간 (결과지 딥링크용) */
+export type CatalogProblemLearningDeepLink = {
+  problem_id: string
+  lecture_session_id: string
+  caption_start_sec: number
+  caption_text: string
+  ebook_page_number: number
+  /** learning_resources.id (ebook_pages.resource_id 또는 learning_resource_id) */
+  resource_id: string | null
+}
+
+/** fasttrack_mock_exam_catalog_problems 행에 직접 저장된 복습용 ID (표시·인라인 딥링크 보강) */
+export type CatalogProblemInlineLearningRef = {
+  ebook_page_id: string | null
+  lecture_caption_id: string | null
+}
+
+/** ebook_pages → 강의/회차/교재/페이지 이동 버튼용 (DB 조인 결과) */
+export type CatalogEbookPageNavContext = {
+  ebook_page_id: string
+  lecture_session_id: string
+  resource_id: string
+  page_number: number
+  lecture_title: string
+  resource_title: string
+  session_order: number
+  session_title: string
+}
+
+/** lecture_captions → 강의/회차/재생 시각 이동 버튼용 */
+export type CatalogLectureCaptionNavContext = {
+  caption_id: string
+  lecture_session_id: string
+  start_sec: number
+  lecture_title: string
+  session_order: number
+  session_title: string
 }

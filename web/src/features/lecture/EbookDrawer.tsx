@@ -24,6 +24,10 @@ type Props = {
   onOpenQuestionFromSelection?: (selectedText: string, pdfUrl: string, pageNumber: number) => void
   /** Mantine Drawer 제목 옆 페이지 네비용 (연결 교재 헤더 등) */
   onPdfToolbar?: (api: PdfReaderToolbarApi | null) => void
+  /** 딥링크: 열 때 선택할 learning_resources.id */
+  initialResourceId?: string | null
+  /** 딥링크: 해당 PDF의 페이지(1-based) */
+  initialPdfPage?: number | null
 }
 
 /** Drawer 제목 줄(연결 교재 · …) 옆에 붙이는 PDF 페이지 이동 */
@@ -117,6 +121,8 @@ type PdfReaderProps = {
   onToolbar?: (api: PdfReaderToolbarApi | null) => void
   /** 페이지 렌더 최대 너비(px) — 컬럼이 넓을수록 크게 */
   maxPageWidth?: number
+  /** 로드 직후 스크롤할 페이지(1-based). 모의고사 결과 딥링크용 */
+  initialScrollPage?: number | null
 }
 
 function PdfReader({
@@ -125,6 +131,7 @@ function PdfReader({
   onOpenQuestionFromSelection,
   onToolbar,
   maxPageWidth = 720,
+  initialScrollPage = null,
 }: PdfReaderProps) {
   const [numPages, setNumPages] = useState(0)
   const [currentPage, setCurrentPage] = useState(1)
@@ -284,6 +291,16 @@ function PdfReader({
               onLoadSuccess={({ numPages: n }) => {
                 setPdfError(null)
                 setNumPages(n)
+                const p = initialScrollPage
+                if (p != null && Number.isFinite(p) && p >= 1 && p <= n) {
+                  const target = Math.floor(p)
+                  requestAnimationFrame(() => {
+                    scrollRef.current
+                      ?.querySelector<HTMLElement>(`[data-edraw-page="${target}"]`)
+                      ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    setCurrentPage(target)
+                  })
+                }
               }}
               onLoadError={(err) => {
                 setNumPages(0)
@@ -351,6 +368,8 @@ export function EbookDrawerPanel({
   lectureId,
   onOpenQuestionFromSelection,
   onPdfToolbar,
+  initialResourceId = null,
+  initialPdfPage = null,
 }: Props) {
   const [rows, setRows] = useState<LearningResource[]>([])
   const [load, setLoad] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
@@ -386,14 +405,18 @@ export function EbookDrawerPanel({
       }
       const list = (data ?? []) as LearningResource[]
       setRows(list)
-      setActiveId(list[0]?.id ?? null)
+      const pick =
+        initialResourceId && list.some((r) => r.id === initialResourceId)
+          ? initialResourceId
+          : list[0]?.id ?? null
+      setActiveId(pick)
       setLoad('ok')
     })()
 
     return () => {
       cancelled = true
     }
-  }, [lectureId])
+  }, [lectureId, initialResourceId])
 
   const active = rows.find((r) => r.id === activeId) ?? null
 
@@ -445,11 +468,19 @@ export function EbookDrawerPanel({
 
           {active ? (
             <PdfReader
+              key={`${active.id}-${initialPdfPage ?? 0}`}
               url={active.pdf_url}
               title={labelFor(active, rows.indexOf(active))}
               onOpenQuestionFromSelection={onOpenQuestionFromSelection}
               onToolbar={onPdfToolbar}
               maxPageWidth={900}
+              initialScrollPage={
+                initialPdfPage != null &&
+                (active.id === initialResourceId ||
+                  (!initialResourceId && rows.length === 1))
+                  ? initialPdfPage
+                  : null
+              }
             />
           ) : null}
         </>

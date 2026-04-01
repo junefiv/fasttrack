@@ -6,9 +6,11 @@ import { MenuPlaceholder } from './pages/MenuPlaceholder'
 import { DrillTakePage } from './pages/mock-exam/DrillTakePage'
 import { MockDrillHomePage } from './pages/mock-exam/MockDrillHomePage'
 import { MockDrillShell } from './pages/mock-exam/MockDrillShell'
+import { MockExamPreviewResultPage } from './pages/mock-exam/MockExamPreviewResultPage'
 import { MockExamResultPage } from './pages/mock-exam/MockExamResultPage'
 import { MockExamTakePage } from './pages/mock-exam/MockExamTakePage'
 import { QuestionBankPage } from './pages/mock-exam/QuestionBankPage'
+import { QuestionsBankDrillPage } from './pages/mock-exam/QuestionsBankDrillPage'
 import { VideoSessionPage } from './pages/videos/VideoSessionPage'
 import { VideosBrowsePage } from './pages/videos/VideosBrowsePage'
 import { CurriculumCoachPage } from './pages/d-agent/CurriculumCoachPage'
@@ -35,9 +37,11 @@ export default function App() {
             <Route index element={<MockDrillHomePage />} />
             <Route path="bank" element={<QuestionBankPage />} />
             <Route path="preview/:catalogId" element={<MockExamTakePage />} />
+            <Route path="preview/:catalogId/result" element={<MockExamPreviewResultPage />} />
             <Route path="mock/:examId" element={<MockExamTakePage />} />
             <Route path="mock/:examId/result/:resultId" element={<MockExamResultPage />} />
             <Route path="drill" element={<DrillTakePage />} />
+            <Route path="questions-bank" element={<QuestionsBankDrillPage />} />
           </Route>
           <Route path="study/question-bank" element={<Navigate to="/study/mock-exam/bank" replace />} />
           <Route

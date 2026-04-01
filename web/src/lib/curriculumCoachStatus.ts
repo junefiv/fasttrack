@@ -365,28 +365,6 @@ export function formatMockCatalogPillarSummaryLine(bars: MockCatalogAccuracyBar[
     .join(' · ')
 }
 
-/** 정답률 구간으로 리그 라벨 (데모 티어) */
-export function bankLeagueFromAccuracy(accuracyPercent: number | null): {
-  leagueName: string
-  leagueSize: number
-  rank: number
-} {
-  if (accuracyPercent === null) {
-    return { leagueName: '측정 전', leagueSize: 0, rank: 0 }
-  }
-  const tiers = [
-    { min: 90, name: '플래티넘 리그', size: 120 },
-    { min: 80, name: '골드 리그', size: 380 },
-    { min: 70, name: '실버 리그', size: 620 },
-    { min: 60, name: '브론즈 리그', size: 540 },
-    { min: 0, name: '스타터 리그', size: 410 },
-  ]
-  const t = tiers.find((x) => accuracyPercent >= x.min) ?? tiers[tiers.length - 1]
-  const seed = Math.floor(accuracyPercent * 100) % 97
-  const rank = Math.max(1, Math.min(t.size, Math.round((t.size * (100 - accuracyPercent)) / 100) + seed))
-  return { leagueName: t.name, leagueSize: t.size, rank }
-}
-
 /** 목표 대학 + 오늘 날짜 기반 동월동일 선배 수강 진행률 데모(중앙값) */
 export function demoPeerLectureMedianPercent(
   targetUniversity: string,

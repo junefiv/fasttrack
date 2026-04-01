@@ -1,0 +1,38 @@
+/**
+ * 시험 본문/지문: 문단은 <p>만 사용. 줄바꿈(\n)으로 블록을 나누지 않음.
+ * <u>…</u>는 밑줄(인라인)만 — 문단 구분 아님.
+ */
+.rich-exam-text {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.rich-exam-text__u,
+.rich-exam-text u {
+  display: inline;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  text-decoration-thickness: from-font;
+}
+
+.rich-exam-text__p {
+  margin: 0 0 0.65em;
+  white-space: normal;
+  line-height: 1.55;
+  color: inherit;
+}
+
+.rich-exam-text__p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-exam-text__soft-para {
+  display: block;
+  margin-top: 0.5em;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.rich-exam-text__soft-para:first-child {
+  margin-top: 0;
+}

@@ -30,3 +30,15 @@ export function isSupabaseMissingRelationError(error: unknown): boolean {
   if (typeof o.message === 'string' && o.message.includes('Could not find the table')) return true
   return false
 }
+
+/** 스키마에 컬럼이 아직 없거나 캐시가 갱신되지 않은 경우 등(선택 컬럼 조회 실패 시 빈 결과로 넘길 때) */
+export function isSupabaseSchemaOrColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const o = error as { code?: string; message?: string }
+  if (o.code === '42703') return true
+  if (o.code === 'PGRST204') return true
+  const m = typeof o.message === 'string' ? o.message : ''
+  if (m.includes('does not exist') && m.includes('column')) return true
+  if (m.includes('schema cache')) return true
+  return false
+}

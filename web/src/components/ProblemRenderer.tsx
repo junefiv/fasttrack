@@ -5,18 +5,32 @@ import './ProblemRenderer.css'
 
 function parseChoices(raw: unknown): ChoiceOption[] {
   if (raw == null) return []
-  if (Array.isArray(raw)) {
-    return raw
-      .map((item): ChoiceOption | null => {
-        if (item && typeof item === 'object' && 'id' in item && 'text' in item) {
-          const o = item as { id: unknown; text: unknown }
-          return { id: String(o.id), text: String(o.text) }
-        }
-        return null
-      })
-      .filter((x): x is ChoiceOption => x !== null)
+
+  let v: unknown = raw
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    if (!t) return []
+    try {
+      v = JSON.parse(t) as unknown
+    } catch {
+      return []
+    }
   }
-  return []
+
+  if (!Array.isArray(v)) return []
+
+  return v
+    .map((item, i): ChoiceOption | null => {
+      if (typeof item === 'string') {
+        return { id: String(i + 1), text: item }
+      }
+      if (item && typeof item === 'object' && 'id' in item && 'text' in item) {
+        const o = item as { id: unknown; text: unknown }
+        return { id: String(o.id), text: String(o.text) }
+      }
+      return null
+    })
+    .filter((x): x is ChoiceOption => x !== null)
 }
 
 type Props = {
@@ -168,7 +182,9 @@ export function ProblemRenderer({
                     onChange={() => onChange(o.id)}
                     disabled={disabled}
                   />
-                  <span>{renderExamRichText(o.text, { softParagraphs: true })}</span>
+                  <span className="problem-renderer__choice-rich">
+                    {renderExamRichText(o.text, { softParagraphs: true, wrap: false })}
+                  </span>
                 </label>
               </li>
             )

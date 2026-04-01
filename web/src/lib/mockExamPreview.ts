@@ -16,7 +16,7 @@ export function buildCatalogPreviewExamMeta(catalog: FasttrackMockExamCatalogRow
 }
 
 /**
- * 카탈로그만 있고 linked_mock_exam_id 가 없을 때 응시 화면 레이아웃을 보여 주기 위한 샘플 문항.
+ * 카탈로그에 문항 행이 없을 때 응시 화면 레이아웃을 보여 주기 위한 샘플 문항.
  * DB 스키마에 맞춘 필드 구성 예시이며, 실제 시험 연결 후에는 fasttrack_problems 데이터로 대체됩니다.
  */
 export function buildCatalogPreviewProblems(catalog: FasttrackMockExamCatalogRow): FasttrackProblemRow[] {

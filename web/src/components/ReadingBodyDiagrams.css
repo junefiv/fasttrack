@@ -41,5 +41,5 @@
   font-size: 0.9rem;
   line-height: 1.55;
   color: var(--text-body, #c8d4e6);
-  white-space: pre-wrap;
+  white-space: normal;
 }

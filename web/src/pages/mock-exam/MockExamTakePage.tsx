@@ -11,11 +11,13 @@ import {
   fetchMockExam,
   fetchMockExamCatalogById,
   fetchProblemsForExam,
+  submitCatalogProblemExamResults,
   submitMockSession,
 } from '../../lib/fasttrackQueries'
 import { buildCatalogPreviewExamMeta, buildCatalogPreviewProblems } from '../../lib/mockExamPreview'
 import { upsertStudentStatsAfterSession } from '../../lib/fasttrackStats'
 import type { FasttrackProblemRow } from '../../types/fasttrack'
+import type { MockExamPreviewResultLocationState } from '../../types/mockExamPreviewResult'
 import './MockExamTakePage.css'
 
 /**
@@ -33,6 +35,8 @@ type MockTakeSheetProblem = {
   passage: string | null
   options: unknown
   correct_answer: string
+  ebook_page_id?: string | null
+  lecture_caption_id?: string | null
   examRow?: FasttrackProblemRow
 }
 
@@ -46,11 +50,15 @@ function mapCatalogRowToSheet(r: {
   diagram_url: string | null
   options: unknown
   answer: number
+  ebook_page_id?: string | null
+  lecture_caption_id?: string | null
 }): MockTakeSheetProblem {
   const rb = r.content?.trim() ? r.content : null
   const ap = r.additional_passage?.trim() ? r.additional_passage : null
   const dg = r.diagram?.trim() ? r.diagram : null
   const du = r.diagram_url?.trim() ? r.diagram_url : null
+  const eb = typeof r.ebook_page_id === 'string' && r.ebook_page_id.trim() ? r.ebook_page_id.trim() : null
+  const lc = typeof r.lecture_caption_id === 'string' && r.lecture_caption_id.trim() ? r.lecture_caption_id.trim() : null
   return {
     id: r.problem_id,
     question_number: r.question_number,
@@ -61,6 +69,8 @@ function mapCatalogRowToSheet(r: {
     passage: ap,
     options: r.options,
     correct_answer: String(r.answer),
+    ebook_page_id: eb,
+    lecture_caption_id: lc,
   }
 }
 
@@ -243,7 +253,47 @@ export function MockExamTakePage() {
     if (submitting || problems.length === 0) return
 
     if (isPreviewMode) {
-      navigate('/study/mock-exam')
+      if (!catalogId) {
+        navigate('/study/mock-exam')
+        return
+      }
+      if (previewFromCatalogDb) {
+        setSubmitting(true)
+        try {
+          await submitCatalogProblemExamResults({
+            userId,
+            catalogId,
+            answers,
+            problemIds: problems.map((p) => p.id),
+          })
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : '답안 저장 실패')
+          setSubmitting(false)
+          return
+        }
+        setSubmitting(false)
+      }
+      const timeSpentSec = Math.max(0, Math.floor((Date.now() - started) / 1000))
+      const sheets = problems.map((p) => ({
+        id: p.id,
+        question_number: p.question_number,
+        instruction: p.instruction,
+        reading_body: p.reading_body,
+        diagram: p.diagram,
+        diagram_url: p.diagram_url,
+        passage: p.passage,
+        options: p.options,
+        correct_answer: p.correct_answer,
+        ebook_page_id: p.ebook_page_id ?? null,
+        lecture_caption_id: p.lecture_caption_id ?? null,
+      }))
+      const state: MockExamPreviewResultLocationState = {
+        examName,
+        timeSpentSec,
+        sheets,
+        answers: { ...answers },
+      }
+      navigate(`/study/mock-exam/preview/${catalogId}/result`, { state })
       return
     }
 
@@ -268,7 +318,19 @@ export function MockExamTakePage() {
       setErr(e instanceof Error ? e.message : '제출 실패')
       setSubmitting(false)
     }
-  }, [answers, examId, isPreviewMode, navigate, problems, started, submitting, userId])
+  }, [
+    answers,
+    catalogId,
+    examId,
+    examName,
+    isPreviewMode,
+    navigate,
+    previewFromCatalogDb,
+    problems,
+    started,
+    submitting,
+    userId,
+  ])
 
   useEffect(() => {
     finishRef.current = () => {
@@ -314,8 +376,19 @@ export function MockExamTakePage() {
           남은 시간 <strong>{fmt(remainSec)}</strong>
         </div>
         <div className="mock-take__actions">
-          <button type="button" className="mock-take__submit" disabled={submitting} onClick={() => void finish()}>
-            {submitting ? '처리 중…' : isPreviewMode ? '나가기' : '시험 종료'}
+          <button
+            type="button"
+            className="mock-take__submit"
+            disabled={submitting}
+            onClick={() => {
+              if (isPreviewMode) {
+                navigate('/study/mock-exam')
+                return
+              }
+              void finish()
+            }}
+          >
+            {submitting ? '처리 중…' : isPreviewMode ? '목록으로' : '시험 종료'}
           </button>
         </div>
       </header>
@@ -398,15 +471,25 @@ export function MockExamTakePage() {
             onChange={(v) => setAnswers((a) => ({ ...a, [current.id]: v }))}
           />
           <div className="mock-take__pager">
-            <button type="button" disabled={idx <= 0} onClick={() => setIdx((i) => i - 1)}>
+            <button type="button" disabled={idx <= 0 || submitting} onClick={() => setIdx((i) => i - 1)}>
               이전
             </button>
             <button
               type="button"
-              disabled={idx >= problems.length - 1}
-              onClick={() => setIdx((i) => i + 1)}
+              disabled={submitting}
+              onClick={() => {
+                if (idx >= problems.length - 1) {
+                  void finish()
+                } else {
+                  setIdx((i) => i + 1)
+                }
+              }}
             >
-              다음
+              {idx >= problems.length - 1
+                ? isPreviewMode
+                  ? '응시 완료'
+                  : '결과 보기'
+                : '다음'}
             </button>
           </div>
         </div>

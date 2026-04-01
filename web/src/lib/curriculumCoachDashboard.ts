@@ -47,6 +47,32 @@ export function aggregateStatsBySubject(
   return list.sort((a, b) => b.totalAttempts - a.totalAttempts)
 }
 
+/** `questions_bank_results` 등 과목별 집계를 fasttrack 학생 통계와 합산 */
+export function mergeQuestionsBankTotalsIntoSubjectSummaries(
+  summaries: SubjectStudySummary[],
+  bankBySubject: { subjectId: string; correct: number; total: number }[],
+  subjectNameById: Map<string, string>,
+): SubjectStudySummary[] {
+  const map = new Map<string, SubjectStudySummary>()
+  for (const s of summaries) {
+    map.set(s.subjectId, { ...s })
+  }
+  for (const b of bankBySubject) {
+    const prev = map.get(b.subjectId)
+    const totalAttempts = (prev?.totalAttempts ?? 0) + b.total
+    const correctCount = (prev?.correctCount ?? 0) + b.correct
+    map.set(b.subjectId, {
+      subjectId: b.subjectId,
+      subjectName: prev?.subjectName ?? subjectNameById.get(b.subjectId) ?? b.subjectId,
+      totalAttempts,
+      correctCount,
+      accuracyPercent:
+        totalAttempts > 0 ? Math.round((correctCount * 1000) / totalAttempts) / 10 : null,
+    })
+  }
+  return [...map.values()].sort((a, b) => b.totalAttempts - a.totalAttempts)
+}
+
 /**
  * 챕터 단위로 합산 후 정답률이 낮은 순(동률이면 시도 수 많은 순).
  * chapter_id 없는 행은 제외.

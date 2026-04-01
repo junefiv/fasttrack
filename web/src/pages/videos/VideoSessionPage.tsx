@@ -1,7 +1,7 @@
 import { Button, Drawer, Group, Paper, ScrollArea, Stack, Text } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { CaptionSearchPanel } from '../../features/lecture/CaptionSearchPanel'
 import {
   EbookDrawerPanel,
@@ -52,6 +52,26 @@ function firstRel<T>(x: T | T[] | null | undefined): T | null {
 
 export function VideoSessionPage() {
   const { sessionId } = useParams<{ sessionId: string }>()
+  const [searchParams] = useSearchParams()
+  const deepSeekRaw = searchParams.get('t')
+  const initialSeekSec =
+    deepSeekRaw != null && deepSeekRaw !== ''
+      ? (() => {
+          const n = Number(deepSeekRaw)
+          return Number.isFinite(n) && n >= 0 ? n : null
+        })()
+      : null
+  const deepOpenEbook = searchParams.get('ebook') === '1'
+  const deepResourceId = searchParams.get('resourceId')?.trim() || null
+  const deepPageRaw = searchParams.get('page')
+  const deepPdfPage =
+    deepPageRaw != null && deepPageRaw !== ''
+      ? (() => {
+          const n = Math.floor(Number(deepPageRaw))
+          return Number.isFinite(n) && n >= 1 ? n : null
+        })()
+      : null
+
   const playerRef = useRef<SessionPlayerHandle>(null)
   const rafRef = useRef<number | null>(null)
   const [captionSearchOpen, { open: openCaptionSearch, close: closeCaptionSearch }] =
@@ -172,6 +192,17 @@ export function VideoSessionPage() {
     }
   }, [sessionId])
 
+  const deepEbookOpenedRef = useRef(false)
+  useEffect(() => {
+    deepEbookOpenedRef.current = false
+  }, [sessionId])
+
+  useEffect(() => {
+    if (load !== 'ok' || !deepOpenEbook || deepEbookOpenedRef.current) return
+    deepEbookOpenedRef.current = true
+    setEbookOpen(true)
+  }, [load, deepOpenEbook])
+
   useEffect(() => {
     setQuestionThreads([])
     setActiveQuestionThreadId(null)
@@ -284,6 +315,7 @@ export function VideoSessionPage() {
           ref={playerRef}
           videoId={session.youtube_video_id}
           onPlayerStateChange={bumpUi}
+          initialSeekSec={initialSeekSec}
         />
 
         <Paper
@@ -438,6 +470,8 @@ export function VideoSessionPage() {
             lectureId={session.lecture_id ?? lec?.id ?? ''}
             onOpenQuestionFromSelection={handleOpenQuestionFromPdfSelection}
             onPdfToolbar={setEbookPdfToolbar}
+            initialResourceId={deepResourceId}
+            initialPdfPage={deepPdfPage}
           />
         </ScrollArea>
       </Drawer>

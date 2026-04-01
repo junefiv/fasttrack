@@ -1,37 +1,27 @@
 import { Anchor, Badge, Button, Group, Paper, Stack, Text } from '@mantine/core'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { ProblemRenderer } from '../../components/ProblemRenderer'
 import {
   catalogCaptionWatchPath,
   catalogEbookPageWatchPath,
-  fetchCatalogInlineLearningRefsForExamAnswers,
-  fetchCatalogLearningLinksByExamProblemIds,
+  fetchCatalogProblemLearningLinksMerged,
   fetchEbookPageNavContexts,
   fetchLectureCaptionNavContexts,
-  fetchMockExam,
-  fetchProblemsByIds,
-  fetchTestResult,
-  fetchUserAnswersForResult,
-  insertDrillFromProblem,
 } from '../../lib/fasttrackQueries'
 import { formatTimestamp } from '../../lib/formatTime'
 import type {
   CatalogEbookPageNavContext,
   CatalogLectureCaptionNavContext,
-  CatalogProblemInlineLearningRef,
   CatalogProblemLearningDeepLink,
-  FasttrackProblemRow,
   FasttrackUserAnswerRow,
 } from '../../types/fasttrack'
+import {
+  isMockExamPreviewResultState,
+  type MockExamPreviewResultSheet,
+} from '../../types/mockExamPreviewResult'
 import { gradeLabel } from './mockDrillUtils'
 import './MockExamResultPage.css'
-
-function buildVideoSeekPath(dl: CatalogProblemLearningDeepLink): string {
-  const q = new URLSearchParams()
-  q.set('t', String(dl.caption_start_sec))
-  return `/study/videos/watch/${dl.lecture_session_id}?${q.toString()}`
-}
 
 function buildLearningWatchPath(dl: CatalogProblemLearningDeepLink): string {
   const q = new URLSearchParams()
@@ -42,12 +32,6 @@ function buildLearningWatchPath(dl: CatalogProblemLearningDeepLink): string {
     q.set('page', String(dl.ebook_page_number))
   }
   return `/study/videos/watch/${dl.lecture_session_id}?${q.toString()}`
-}
-
-function captionPreview(text: string, max = 96): string {
-  const t = text.replace(/\s+/g, ' ').trim()
-  if (t.length <= max) return t
-  return `${t.slice(0, max)}…`
 }
 
 function ebookNavButtonLabel(ctx: CatalogEbookPageNavContext): string {
@@ -63,149 +47,138 @@ function captionNavButtonLabel(ctx: CatalogLectureCaptionNavContext): string {
   return `${lec} › ${ses} · ${formatTimestamp(ctx.start_sec)}`
 }
 
-export function MockExamResultPage() {
-  const { examId = '', resultId = '' } = useParams()
-  const navigate = useNavigate()
-  const [result, setResult] = useState<Awaited<ReturnType<typeof fetchTestResult>>>(null)
-  const [answers, setAnswers] = useState<FasttrackUserAnswerRow[]>([])
-  const [problems, setProblems] = useState<Map<string, FasttrackProblemRow>>(new Map())
+export function MockExamPreviewResultPage() {
+  const { catalogId = '' } = useParams<{ catalogId: string }>()
+  const location = useLocation()
+  const state = isMockExamPreviewResultState(location.state) ? location.state : null
+
   const [deepLinks, setDeepLinks] = useState<Map<string, CatalogProblemLearningDeepLink>>(new Map())
-  const [inlineRefs, setInlineRefs] = useState<Map<string, CatalogProblemInlineLearningRef>>(new Map())
   const [ebookNavByPageId, setEbookNavByPageId] = useState<Map<string, CatalogEbookPageNavContext>>(new Map())
   const [capNavById, setCapNavById] = useState<Map<string, CatalogLectureCaptionNavContext>>(new Map())
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
-  const [drillBusy, setDrillBusy] = useState<'upper' | 'lower' | null>(null)
+
+  const syntheticAnswers: FasttrackUserAnswerRow[] = useMemo(() => {
+    if (!state) return []
+    return state.sheets.map((s) => {
+      const ua = (state.answers[s.id] ?? '').trim()
+      const ok = ua === String(s.correct_answer).trim()
+      return {
+        id: `preview-${s.id}`,
+        user_id: '',
+        result_id: '',
+        problem_id: s.id,
+        is_mock: true,
+        user_answer: ua || '(미응답)',
+        is_correct: ok,
+      }
+    })
+  }, [state])
+
+  const scoreMeta = useMemo(() => {
+    if (!state) return null
+    const total = state.sheets.length
+    let correct = 0
+    for (const s of state.sheets) {
+      const ua = (state.answers[s.id] ?? '').trim()
+      if (ua === String(s.correct_answer).trim()) correct += 1
+    }
+    const score = total > 0 ? Math.round((correct * 100) / total) : 0
+    return { correct, total, score, timeSpentSec: state.timeSpentSec, examName: state.examName }
+  }, [state])
 
   useEffect(() => {
+    if (!state?.sheets.length) return
     let cancelled = false
-    ;(async () => {
+    const ids = state.sheets.map((s) => s.id)
+    const eb = new Set<string>()
+    const cp = new Set<string>()
+    for (const s of state.sheets) {
+      if (s.ebook_page_id?.trim()) eb.add(s.ebook_page_id.trim())
+      if (s.lecture_caption_id?.trim()) cp.add(s.lecture_caption_id.trim())
+    }
+    void (async () => {
       try {
-        const r = await fetchTestResult(resultId)
-        const ans = await fetchUserAnswersForResult(resultId)
-        if (cancelled) return
-        setResult(r)
-        setAnswers(ans)
-        const ids = [...new Set(ans.map((a) => a.problem_id))]
-        const pmap = await fetchProblemsByIds(ids)
-        if (cancelled) return
-        setProblems(pmap)
-        let catalogId = r?.catalog_id ?? null
-        if (!catalogId && examId) {
-          const ex = await fetchMockExam(examId)
-          catalogId = ex?.catalog_id ?? null
-        }
-        const [linkMap, irMap] = await Promise.all([
-          fetchCatalogLearningLinksByExamProblemIds({
-            catalogId,
-            examProblems: pmap,
-            examProblemIds: ids,
-          }),
-          fetchCatalogInlineLearningRefsForExamAnswers({
-            catalogId,
-            examProblems: pmap,
-            examProblemIds: ids,
-          }),
-        ])
-        const eb = new Set<string>()
-        const cp = new Set<string>()
-        for (const r of irMap.values()) {
-          if (r.ebook_page_id?.trim()) eb.add(r.ebook_page_id.trim())
-          if (r.lecture_caption_id?.trim()) cp.add(r.lecture_caption_id.trim())
-        }
-        const [em, cm] = await Promise.all([
+        const [m, em, cm] = await Promise.all([
+          fetchCatalogProblemLearningLinksMerged(ids),
           fetchEbookPageNavContexts([...eb]),
           fetchLectureCaptionNavContexts([...cp]),
         ])
         if (!cancelled) {
-          setDeepLinks(linkMap)
-          setInlineRefs(irMap)
+          setDeepLinks(m)
           setEbookNavByPageId(em)
           setCapNavById(cm)
         }
-      } catch (e) {
-        if (!cancelled) setErr(e instanceof Error ? e.message : '로드 실패')
-      } finally {
-        if (!cancelled) setLoading(false)
+      } catch {
+        if (!cancelled) {
+          setDeepLinks(new Map())
+          setEbookNavByPageId(new Map())
+          setCapNavById(new Map())
+        }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [examId, resultId])
+  }, [state])
 
   const sortedAnswers = useMemo(() => {
-    return [...answers].sort((a, b) => {
-      const pa = problems.get(a.problem_id)?.problem_number ?? 0
-      const pb = problems.get(b.problem_id)?.problem_number ?? 0
+    return [...syntheticAnswers].sort((a, b) => {
+      const sa = state?.sheets.find((x) => x.id === a.problem_id)
+      const sb = state?.sheets.find((x) => x.id === b.problem_id)
+      const pa = sa?.question_number ?? 0
+      const pb = sb?.question_number ?? 0
       if (pa !== pb) return pa - pb
       return a.problem_id.localeCompare(b.problem_id)
     })
-  }, [answers, problems])
+  }, [syntheticAnswers, state])
 
-  const wrong = answers.filter((a) => !a.is_correct)
+  const wrong = syntheticAnswers.filter((a) => !a.is_correct)
+  const sheetById = useMemo(() => {
+    const m = new Map<string, MockExamPreviewResultSheet>()
+    if (state) for (const s of state.sheets) m.set(s.id, s)
+    return m
+  }, [state])
 
-  async function startDrill(version: 'upper' | 'lower') {
-    if (wrong.length === 0) return
-    setDrillBusy(version)
-    try {
-      const newIds: string[] = []
-      for (const a of wrong) {
-        const row = await insertDrillFromProblem(a.problem_id, version)
-        newIds.push(row.id)
-      }
-      const q = newIds.map(encodeURIComponent).join(',')
-      navigate(`/study/mock-exam/drill?ids=${q}`)
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : '드릴 생성 실패')
-    } finally {
-      setDrillBusy(null)
-    }
-  }
-
-  if (loading) return <div className="mock-result mock-result--centered">결과 불러오는 중…</div>
-  if (err || !result)
+  if (!state || !scoreMeta) {
     return (
       <div className="mock-result mock-result--centered">
-        <p>{err ?? '결과 없음'}</p>
-        <Link to="/study/mock-exam">홈으로</Link>
+        <p>미리보기 결과 정보가 없습니다. 시험을 마친 뒤 이 페이지로 이동하거나, 목록에서 다시 응시해 주세요.</p>
+        <Link to="/study/mock-exam">모의고사 홈</Link>
       </div>
     )
+  }
 
   return (
     <div className="mock-result">
       <header className="mock-result__head">
-        <p className="mock-result__badge">모의고사 결과</p>
-        <h1 className="mock-result__title">채점 완료</h1>
+        <p className="mock-result__badge">미리보기 결과</p>
+        <h1 className="mock-result__title">{scoreMeta.examName}</h1>
         <div className="mock-result__scorebox">
           <p className="mock-result__score">
-            {result.score}점 <span className="mock-result__grade">({gradeLabel(result.score)})</span>
+            {scoreMeta.score}점 <span className="mock-result__grade">({gradeLabel(scoreMeta.score)})</span>
           </p>
           <p className="mock-result__meta">
-            {result.correct_count} / {result.total_questions} 정답 · 소요 {Math.floor(result.time_spent_sec / 60)}분
+            {scoreMeta.correct} / {scoreMeta.total} 정답 · 소요 {Math.floor(scoreMeta.timeSpentSec / 60)}분
           </p>
         </div>
         <p className="mock-result__fomo" role="note">
-          동일 성적대 합격생 벤치마크는 곧 연동됩니다. (Confirmed_Data)
+          미리보기는 DB에 응시 기록을 남기지 않습니다. 새로고침하면 이 화면을 다시 열 수 없을 수 있습니다.
         </p>
       </header>
 
       <section className="mock-result__navigator" aria-label="선제적 학습 경로">
         <h2 className="mock-result__h2">문항별 강의·교재로 이어가기</h2>
         <p className="mock-result__nav-lead">
-          정답·오답과 관계없이, 카탈로그에 연결된 교재 페이지·자막 시각으로 각각 이동할 수 있습니다. 교재와 자막이 서로 다른
-          강의 회차를 가리키면 &quot;교재·강의 함께&quot; 한 번에 열기는 제공되지 않으며, 아래 두 버튼으로 회차별로
-          이동합니다. 같은 회차일 때만 오른쪽에 통합 링크가 함께 표시됩니다.
+          정답·오답과 관계없이, 카탈로그에 연결된 교재 페이지·자막 시각으로 각각 이동할 수 있습니다. 교재와 자막이 같은
+          회차일 때만 &quot;강의·교재 열기&quot; 통합 링크가 표시됩니다.
         </p>
         <Stack gap="sm">
           {sortedAnswers.map((a) => {
-            const p = problems.get(a.problem_id)
-            const n = p?.problem_number && p.problem_number > 0 ? p.problem_number : null
+            const s = sheetById.get(a.problem_id)
+            const n = s?.question_number && s.question_number > 0 ? s.question_number : null
             const label = n != null ? `문항 ${n}` : `문항 ${a.problem_id.slice(0, 8)}…`
             const dl = deepLinks.get(a.problem_id)
-            const ir = inlineRefs.get(a.problem_id)
-            const ebId = ir?.ebook_page_id?.trim() ?? ''
-            const capId = ir?.lecture_caption_id?.trim() ?? ''
+            const ebId = s?.ebook_page_id?.trim() ?? ''
+            const capId = s?.lecture_caption_id?.trim() ?? ''
             const ebookCtx = ebId ? ebookNavByPageId.get(ebId.toLowerCase()) : undefined
             const capCtx = capId ? capNavById.get(capId) : undefined
             const hasAnyRef = Boolean(ebId || capId)
@@ -224,7 +197,7 @@ export function MockExamResultPage() {
                     {dl ? (
                       <>
                         <Text size="xs" c="dimmed">
-                          자막 {formatTimestamp(dl.caption_start_sec)} — {captionPreview(dl.caption_text)}
+                          재생 시각 {formatTimestamp(dl.caption_start_sec)}
                         </Text>
                         {dl.resource_id ? (
                           <Text size="xs" c="dimmed">
@@ -238,12 +211,11 @@ export function MockExamResultPage() {
                       </>
                     ) : hasAnyRef ? (
                       <Text size="xs" c="dimmed">
-                        교재·자막이 서로 다른 회차이면 통합 재생 링크는 없습니다. 오른쪽 버튼으로 각 회차로 이동하세요.
+                        교재·자막이 서로 다른 회차이면 통합 링크는 없습니다. 오른쪽 버튼으로 각 회차로 이동하세요.
                       </Text>
                     ) : (
                       <Text size="xs" c="dimmed">
-                        카탈로그 문항에 교재·자막 ID가 없거나, 응시 문항 번호가 카탈로그 question_number와 맞지 않을 수
-                        있습니다.
+                        카탈로그 문항에 교재·자막 ID가 없습니다.
                       </Text>
                     )}
                   </Stack>
@@ -279,14 +251,9 @@ export function MockExamResultPage() {
                       </Text>
                     ) : null}
                     {dl ? (
-                      <Group gap="xs" wrap="wrap" justify="flex-end">
-                        <Anchor component={Link} to={buildVideoSeekPath(dl)} size="sm" fw={600}>
-                          강의 (이 시각)
-                        </Anchor>
-                        <Anchor component={Link} to={buildLearningWatchPath(dl)} size="sm" fw={600}>
-                          {dl.resource_id ? '교재·강의 함께' : '강의+교재 보기'}
-                        </Anchor>
-                      </Group>
+                      <Anchor component={Link} to={buildLearningWatchPath(dl)} size="sm" fw={600}>
+                        강의·교재 열기 (통합)
+                      </Anchor>
                     ) : null}
                   </Stack>
                 </Group>
@@ -303,26 +270,31 @@ export function MockExamResultPage() {
         ) : (
           <ul className="mock-result__list">
             {wrong
-              .filter((a) => problems.has(a.problem_id))
+              .filter((a) => sheetById.has(a.problem_id))
               .map((a) => {
-                const p = problems.get(a.problem_id)!
+                const s = sheetById.get(a.problem_id)!
                 return (
                   <li key={a.id} className="mock-result__item">
                     <ProblemRenderer
-                      questionText={p.question_text}
-                      passage={p.passage}
-                      referenceView={p.reference_view}
-                      choices={p.choices}
-                      name={`review-${a.id}`}
+                      instructionText={s.instruction}
+                      problemNumber={s.question_number > 0 ? s.question_number : undefined}
+                      questionText=""
+                      readingBody={s.reading_body}
+                      suppressReadingBody={false}
+                      readingDiagram={s.diagram}
+                      readingDiagramUrl={s.diagram_url}
+                      passage={s.passage}
+                      choices={s.options}
+                      name={`preview-review-${a.id}`}
                       value={a.user_answer}
                       onChange={() => {}}
                       disabled
                       showCorrect
-                      correctAnswer={p.correct_answer}
+                      correctAnswer={s.correct_answer}
                     />
                     <p className="mock-result__explain">
-                      <strong>정답</strong> {p.correct_answer} ·{' '}
-                      {p.explanation ?? '해설이 없습니다.'}
+                      <strong>정답</strong> {s.correct_answer} ·{' '}
+                      {s.explanation?.trim() ? s.explanation : '해설이 없습니다.'}
                     </p>
                   </li>
                 )
@@ -332,27 +304,11 @@ export function MockExamResultPage() {
       </section>
 
       <div className="mock-result__cta">
-        <button
-          type="button"
-          className="mock-result__btn mock-result__btn--upper"
-          disabled={wrong.length === 0 || drillBusy !== null}
-          onClick={() => void startDrill('upper')}
-        >
-          {drillBusy === 'upper' ? '생성 중…' : '상위 드릴 시작'}
-        </button>
-        <button
-          type="button"
-          className="mock-result__btn mock-result__btn--lower"
-          disabled={wrong.length === 0 || drillBusy !== null}
-          onClick={() => void startDrill('lower')}
-        >
-          {drillBusy === 'lower' ? '생성 중…' : '하위 드릴 시작'}
-        </button>
+        <Link to={`/study/mock-exam/preview/${catalogId}`} className="mock-result__btn mock-result__btn--upper">
+          같은 미리보기 다시 보기
+        </Link>
         <Link to="/d-agent/mh-chat" className="mock-result__btn mock-result__btn--agent">
           My Agent에게 물어보기
-        </Link>
-        <Link to={`/study/mock-exam/mock/${examId}`} className="mock-result__link">
-          같은 시험 다시 보기
         </Link>
         <Link to="/study/mock-exam" className="mock-result__link">
           모의고사 홈

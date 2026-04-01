@@ -75,39 +75,13 @@
   margin: 0;
   line-height: 1.55;
   color: var(--text-body, #c8d4e6);
-  white-space: pre-wrap;
+  /* 문단은 <p>만; renderExamRichText 가 .rich-exam-text 로 normal 처리 */
+  white-space: normal;
 }
 
-.problem-renderer__body u,
-.problem-renderer__qtext u,
-.problem-renderer__choice span u,
-.rich-exam-text__p u,
-.rich-exam-text__soft-para u {
-  text-decoration: underline;
-  text-underline-offset: 0.12em;
-  text-decoration-thickness: from-font;
-}
-
-.rich-exam-text__p {
-  margin: 0 0 0.65em;
-  white-space: pre-wrap;
-  line-height: 1.55;
-  color: inherit;
-}
-
-.rich-exam-text__p:last-child {
-  margin-bottom: 0;
-}
-
-.rich-exam-text__soft-para {
-  display: block;
-  margin-top: 0.5em;
-  white-space: pre-wrap;
-  line-height: 1.5;
-}
-
-.rich-exam-text__soft-para:first-child {
-  margin-top: 0;
+.problem-renderer__choice-rich {
+  white-space: normal;
+  word-break: break-word;
 }
 
 .problem-renderer__body--mono {

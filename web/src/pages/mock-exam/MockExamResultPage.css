@@ -1,5 +1,5 @@
 .mock-result {
-  max-width: 720px;
+  max-width: 800px;
   margin: 0 auto;
   padding-bottom: 2rem;
 }
@@ -64,6 +64,23 @@
   font-size: 0.8rem;
   color: #94a3b8;
   line-height: 1.45;
+}
+
+.mock-result__navigator {
+  margin-bottom: 1.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border, #2a3548);
+}
+
+.mock-result__nav-lead {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--text-muted, #8b9cb3);
+}
+
+.mock-result__nav-card {
+  background: rgba(12, 16, 24, 0.35);
 }
 
 .mock-result__wrong {

@@ -4,10 +4,10 @@ import {
   demoPeerAdmissionStats,
   pickWeakChapters,
 } from '../../lib/curriculumCoachDashboard'
+import type { SubjectStudySummary } from '../../lib/curriculumCoachDashboard'
 import { loadCurriculumCoachProfile } from '../../lib/curriculumCoachProfile'
 import {
   aggregateMockCatalogPillarTotals,
-  bankLeagueFromAccuracy,
   buildMockCatalogAccuracyBars,
   buildMockCatalogPeerStatsMap,
   demoPeerLectureMedianPercent,
@@ -29,10 +29,13 @@ import {
   fetchCatalogMockCoachBundleForUser,
   fetchChapterNamesMap,
   fetchLectureSessionCount,
+  fetchQuestionsBankQuestionCountsBySubject,
+  fetchQuestionsBankStatsBySubjectForUser,
   fetchStudentStatsForUser,
   fetchSubjects,
   type CatalogMockProblemLatestRow,
 } from '../../lib/fasttrackQueries'
+import type { SubjectRow } from '../../types/fasttrack'
 import {
   analyzeMockCoachSnapshotWithGemini,
   buildMockCoachAnalysisPayload,
@@ -42,6 +45,23 @@ import { messageFromUnknownError } from '../../lib/unknownError'
 import './CurriculumCoachPage.css'
 
 type DetailKey = 'mock' | 'bank' | 'lecture'
+
+function formatCoachBankLine(
+  bankListedCount: number,
+  bank: { correct: number; total: number } | undefined,
+): string {
+  if (bankListedCount <= 0) return '문제은행: 문항 준비 중'
+  const b = bank ?? { correct: 0, total: 0 }
+  if (b.total <= 0) return `문제은행: 아직 풀이 없음 (등록 ${bankListedCount.toLocaleString()}문항)`
+  const acc = Math.round((b.correct * 1000) / b.total) / 10
+  return `문제은행: 정답률 ${acc}% (${b.correct.toLocaleString()}/${b.total.toLocaleString()}문항)`
+}
+
+function formatCoachDrillLine(drill: SubjectStudySummary | undefined): string {
+  if (!drill || drill.totalAttempts <= 0) return '드릴: 풀이 없음'
+  const acc = drill.accuracyPercent ?? '—'
+  return `드릴: 정답률 ${acc}% (${drill.correctCount.toLocaleString()}/${drill.totalAttempts.toLocaleString()}문항)`
+}
 
 const MOCK_DONUT_SIZE = 76
 const MOCK_DONUT_STROKE = 7
@@ -240,13 +260,19 @@ function MockCatalogBarCompare({
 }
 
 export function CurriculumCoachPage() {
+  /** 프로토타입 기본값 `11111111-1111-4111-8111-111111111111` · `VITE_FASTTRACK_DEV_USER_ID` 우선 */
   const userId = useMemo(() => getFasttrackUserId(), [])
   const [profile] = useState(() => loadCurriculumCoachProfile())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [subjectSummaries, setSubjectSummaries] = useState<
+  const [catalogSubjects, setCatalogSubjects] = useState<SubjectRow[]>([])
+  const [drillSubjectSummaries, setDrillSubjectSummaries] = useState<
     ReturnType<typeof aggregateStatsBySubject>
   >([])
+  const [bankSubjectStats, setBankSubjectStats] = useState<
+    Awaited<ReturnType<typeof fetchQuestionsBankStatsBySubjectForUser>>
+  >([])
+  const [bankQuestionCounts, setBankQuestionCounts] = useState<Record<string, number>>({})
   const [weakChapters, setWeakChapters] = useState<ReturnType<typeof pickWeakChapters>>([])
   const [catalogMockDashboard, setCatalogMockDashboard] = useState<
     Awaited<ReturnType<typeof fetchCatalogMockCoachBundleForUser>>['dashboard']
@@ -276,18 +302,25 @@ export function CurriculumCoachPage() {
     [profile.targetUniversity],
   )
 
-  const totals = useMemo(() => {
-    let attempts = 0
-    let correct = 0
-    for (const s of subjectSummaries) {
-      attempts += s.totalAttempts
-      correct += s.correctCount
-    }
-    const acc = attempts > 0 ? Math.round((correct * 1000) / attempts) / 10 : null
-    return { attempts, correct, acc }
-  }, [subjectSummaries])
+  const drillBySubjectId = useMemo(
+    () => new Map(drillSubjectSummaries.map((s) => [s.subjectId, s])),
+    [drillSubjectSummaries],
+  )
+  const bankBySubjectId = useMemo(
+    () => new Map(bankSubjectStats.map((s) => [s.subjectId, s])),
+    [bankSubjectStats],
+  )
 
-  const bankLeague = useMemo(() => bankLeagueFromAccuracy(totals.acc), [totals.acc])
+  const coachSubjectRows = useMemo(
+    () =>
+      catalogSubjects.map((sub) => ({
+        sub,
+        drill: drillBySubjectId.get(sub.id),
+        bank: bankBySubjectId.get(sub.id),
+        bankListed: bankQuestionCounts[sub.id] ?? 0,
+      })),
+    [catalogSubjects, drillBySubjectId, bankBySubjectId, bankQuestionCounts],
+  )
 
   const lectureProgressPercent = useMemo(() => {
     if (lectureSessionTotal <= 0) return null
@@ -306,9 +339,31 @@ export function CurriculumCoachPage() {
         fetchLectureSessionCount(),
       ])
 
+      setCatalogSubjects(subjects)
       const subjectNameById = new Map(subjects.map((s) => [s.id, s.name]))
-      const bySubject = aggregateStatsBySubject(statRows, subjectNameById)
-      setSubjectSummaries(bySubject)
+      setDrillSubjectSummaries(aggregateStatsBySubject(statRows, subjectNameById))
+
+      let bankStatsBySubject: Awaited<ReturnType<typeof fetchQuestionsBankStatsBySubjectForUser>> = []
+      try {
+        bankStatsBySubject = await fetchQuestionsBankStatsBySubjectForUser(userId)
+      } catch (bankErr) {
+        console.error('[CurriculumCoach] questions_bank_results 과목 집계 실패 (문제은행 통계 생략)', {
+          message: messageFromUnknownError(bankErr),
+          userId,
+        })
+      }
+      setBankSubjectStats(bankStatsBySubject)
+
+      try {
+        const counts = await fetchQuestionsBankQuestionCountsBySubject()
+        setBankQuestionCounts(counts)
+      } catch (countErr) {
+        console.error('[CurriculumCoach] questions_bank 과목별 문항 수 집계 실패', {
+          message: messageFromUnknownError(countErr),
+          userId,
+        })
+        setBankQuestionCounts({})
+      }
 
       const chapterIds = [...new Set(statRows.map((r) => r.chapter_id).filter(Boolean) as string[])]
       const chapterNameById = await fetchChapterNamesMap(chapterIds)
@@ -364,7 +419,10 @@ export function CurriculumCoachPage() {
         stack: e instanceof Error ? e.stack : undefined,
       })
       setError(msg || '데이터를 불러오지 못했습니다.')
-      setSubjectSummaries([])
+      setCatalogSubjects([])
+      setDrillSubjectSummaries([])
+      setBankSubjectStats([])
+      setBankQuestionCounts({})
       setWeakChapters([])
       setCatalogMockDashboard([])
       setMockProblemLatest([])
@@ -406,10 +464,14 @@ export function CurriculumCoachPage() {
     [mockCatalogAccuracy],
   )
 
-  const subjectLabelById = useMemo(
-    () => new Map(subjectSummaries.map((s) => [s.subjectId, s.subjectName])),
-    [subjectSummaries],
-  )
+  const subjectLabelById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const s of catalogSubjects) m.set(s.id, s.name)
+    for (const d of drillSubjectSummaries) {
+      if (!m.has(d.subjectId)) m.set(d.subjectId, d.subjectName)
+    }
+    return m
+  }, [catalogSubjects, drillSubjectSummaries])
 
   const mockCategoryRollups = useMemo(
     () => rollupMockProblemsByCategory(mockProblemLatest),
@@ -687,27 +749,25 @@ export function CurriculumCoachPage() {
             </article>
 
             <article className="curriculum-coach__status-card">
-              <h3 className="curriculum-coach__status-card-title">문제은행</h3>
+              <h3 className="curriculum-coach__status-card-title">문제은행·드릴</h3>
               <p className="curriculum-coach__status-card-desc">
-                누적 정답률 기준 리그 내 순위 (문제은행·드릴 통계 합산)
+                플랫폼에 등록된 과목마다 문제은행(등록·풀이)과 드릴 풀이를 구분해 둡니다. 새 과목이 생기면
+                이 목록에도 같이 나타납니다.
               </p>
-              {totals.attempts === 0 ? (
-                <p className="curriculum-coach__status-card-metric">
-                  아직 문제은행·드릴 풀이 통계가 없습니다.
-                </p>
+              {coachSubjectRows.length === 0 ? (
+                <p className="curriculum-coach__status-card-metric">과목 목록을 불러오는 중이거나 없습니다.</p>
               ) : (
-                <>
-                  <p className="curriculum-coach__status-card-metric">
-                    {bankLeague.leagueName}
-                    {bankLeague.leagueSize > 0
-                      ? ` · ${bankLeague.rank.toLocaleString()} / ${bankLeague.leagueSize.toLocaleString()}위`
-                      : ''}
-                  </p>
-                  <p className="curriculum-coach__status-card-sub">
-                    정답률 <strong>{totals.acc}%</strong> ({totals.correct.toLocaleString()} /{' '}
-                    {totals.attempts.toLocaleString()}문항)
-                  </p>
-                </>
+                <ul className="curriculum-coach__bank-catalog" aria-label="과목별 문제은행·드릴">
+                  {coachSubjectRows.map(({ sub, drill, bank, bankListed }) => (
+                    <li key={sub.id}>
+                      <strong>{sub.name}</strong>
+                      <span className="curriculum-coach__bank-catalog-meta">
+                        {' '}
+                        · {formatCoachBankLine(bankListed, bank)} · {formatCoachDrillLine(drill)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
               <button
                 type="button"
@@ -719,20 +779,58 @@ export function CurriculumCoachPage() {
               </button>
               {expanded === 'bank' ? (
                 <div className="curriculum-coach__detail-panel" role="region" aria-label="문제은행 상세">
-                  <h4 className="curriculum-coach__detail-subtitle">과목별 정답률·풀이량</h4>
-                  {subjectSummaries.length === 0 ? (
-                    <p className="curriculum-coach__detail-muted">집계된 과목 데이터가 없습니다.</p>
+                  <h4 className="curriculum-coach__detail-subtitle">문제은행 (과목별)</h4>
+                  {coachSubjectRows.length === 0 ? (
+                    <p className="curriculum-coach__detail-muted">과목 데이터가 없습니다.</p>
                   ) : (
                     <ul className="curriculum-coach__detail-list">
-                      {subjectSummaries.map((s) => (
-                        <li key={s.subjectId}>
-                          <strong>{s.subjectName}</strong>: 정답률 {s.accuracyPercent ?? '—'}% ·{' '}
-                          {s.totalAttempts.toLocaleString()}문항
+                      {coachSubjectRows.map(({ sub, bank, bankListed }) => (
+                        <li key={`bank-${sub.id}`}>
+                          <strong>{sub.name}</strong>
+                          {bankListed <= 0 ? (
+                            <> — 등록 문항 없음 (준비 중)</>
+                          ) : (
+                            <>
+                              {' '}
+                              — 등록 {bankListed.toLocaleString()}문항
+                              {bank && bank.total > 0 ? (
+                                <>
+                                  {' '}
+                                  · 정답률 {Math.round((bank.correct * 1000) / bank.total) / 10}% (
+                                  {bank.correct.toLocaleString()}/{bank.total.toLocaleString()})
+                                </>
+                              ) : (
+                                <> · 아직 풀이 없음</>
+                              )}
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <h4 className="curriculum-coach__detail-subtitle">취약 챕터 (정답률 낮은 순)</h4>
+                  <h4 className="curriculum-coach__detail-subtitle">드릴 (과목별)</h4>
+                  {coachSubjectRows.length === 0 ? (
+                    <p className="curriculum-coach__detail-muted">과목 데이터가 없습니다.</p>
+                  ) : (
+                    <ul className="curriculum-coach__detail-list">
+                      {coachSubjectRows.map(({ sub, drill }) => (
+                        <li key={`drill-${sub.id}`}>
+                          <strong>{sub.name}</strong>
+                          {!drill || drill.totalAttempts <= 0 ? (
+                            <> — 풀이 없음</>
+                          ) : (
+                            <>
+                              {' '}
+                              — 정답률 {drill.accuracyPercent ?? '—'}% (
+                              {drill.correctCount.toLocaleString()}/
+                              {drill.totalAttempts.toLocaleString()}문항)
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <h4 className="curriculum-coach__detail-subtitle">드릴 취약 챕터 (정답률 낮은 순)</h4>
                   {weakChapters.length === 0 ? (
                     <p className="curriculum-coach__detail-muted">
                       챕터별 충분한 풀이 후 표시됩니다.
@@ -747,10 +845,6 @@ export function CurriculumCoachPage() {
                       ))}
                     </ul>
                   )}
-                  <p className="curriculum-coach__detail-foot">
-                    리그·순위는 정답률 구간별 데모 코호트입니다. 실서비스에서는 동일 리그 사용자 집단과
-                    동기화됩니다.
-                  </p>
                 </div>
               ) : null}
             </article>
