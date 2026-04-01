@@ -161,7 +161,14 @@
 }
 
 .mock-take__num--done {
-  border-color: rgba(45, 212, 191, 0.4);
+  border-color: rgba(45, 212, 191, 0.65);
+  background: rgba(13, 148, 136, 0.35);
+  color: #99f6e4;
+}
+
+.mock-take__num--current.mock-take__num--done {
+  border-color: #38bdf8;
+  color: #7dd3fc;
 }
 
 .mock-take__num--flag {

@@ -66,27 +66,29 @@ export async function fetchCatalogProblemsForTake(catalogId: string): Promise<
     lecture_caption_id: string | null
   }[]
 > {
+  // DB PK 컬럼은 `id`(일부 환경은 `problem_id`). PostgREST 별칭으로 앱 타입의 problem_id에 맞춤.
+  // `diagram` 텍스트 컬럼이 없는 스키마도 지원(도식 URL만 diagram_url).
   const { data, error } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
     .select(
-      'problem_id, question_number, instruction, content, additional_passage, diagram, diagram_url, options, answer, ebook_page_id, lecture_caption_id',
+      'problem_id:id, question_number, instruction, content, additional_passage, diagram_url, options, answer, ebook_page_id, lecture_caption_id',
     )
     .eq('catalog_id', catalogId)
     .order('question_number', { ascending: true })
   if (error) throw error
-  return (data ?? []) as {
+  const rows = (data ?? []) as {
     problem_id: string
     question_number: number
     instruction: string | null
     content: string | null
     additional_passage: string | null
-    diagram: string | null
     diagram_url: string | null
     options: unknown
     answer: number
     ebook_page_id: string | null
     lecture_caption_id: string | null
   }[]
+  return rows.map((r) => ({ ...r, diagram: null as string | null }))
 }
 
 export type CatalogProblemExamAggregateRow = {
@@ -112,8 +114,8 @@ export async function fetchCatalogProblemExamAggregatesForUser(
   const problemIds = [...new Set(rows.map((r) => r.problem_id))]
   const { data: probs, error: e2 } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
-    .select('problem_id, catalog_id')
-    .in('problem_id', problemIds)
+    .select('problem_id:id, catalog_id')
+    .in('id', problemIds)
   if (e2) throw e2
 
   const probRows = (probs ?? []) as { problem_id: string; catalog_id: string }[]
@@ -237,8 +239,8 @@ export async function fetchCatalogMockCoachBundleForUser(userId: string): Promis
   const problemIds = [...latestByProblem.keys()]
   const { data: probs, error: e2 } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
-    .select('problem_id, catalog_id, question_number, category_label, tags, instruction')
-    .in('problem_id', problemIds)
+    .select('problem_id:id, catalog_id, question_number, category_label, tags, instruction')
+    .in('id', problemIds)
   if (e2) throw e2
   const probRows = (probs ?? []) as {
     problem_id: string
@@ -396,8 +398,8 @@ export async function fetchCatalogExamAggregatesByCatalogAndUser(): Promise<
     if (chunk.length === 0) continue
     const { data, error } = await supabase
       .from('fasttrack_mock_exam_catalog_problems')
-      .select('problem_id, catalog_id')
-      .in('problem_id', chunk)
+      .select('problem_id:id, catalog_id')
+      .in('id', chunk)
     if (error) throw error
     for (const row of (data ?? []) as { problem_id: string; catalog_id: string }[]) {
       problemToCatalog.set(row.problem_id, row.catalog_id)
@@ -577,8 +579,8 @@ export async function fetchCatalogProblemInlineRefsByProblemIds(
 
   const { data, error } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
-    .select('problem_id, ebook_page_id, lecture_caption_id')
-    .in('problem_id', ids)
+    .select('problem_id:id, ebook_page_id, lecture_caption_id')
+    .in('id', ids)
 
   if (error) {
     if (isSupabaseMissingRelationError(error) || isSupabaseSchemaOrColumnError(error)) return out
@@ -889,7 +891,7 @@ export async function fetchCatalogProblemIdsByQuestionNumber(catalogId: string):
 
   const { data, error } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
-    .select('problem_id, question_number')
+    .select('problem_id:id, question_number')
     .eq('catalog_id', cid)
 
   if (error) {
@@ -1065,9 +1067,9 @@ export async function submitMockSession(params: {
     const ids = problemRows.map((p) => p.id)
     const { data: catProbRows, error: catErr } = await supabase
       .from('fasttrack_mock_exam_catalog_problems')
-      .select('problem_id')
+      .select('problem_id:id')
       .eq('catalog_id', catalogId)
-      .in('problem_id', ids)
+      .in('id', ids)
     if (catErr) throw catErr
     const allowed = new Set((catProbRows ?? []).map((r) => (r as { problem_id: string }).problem_id))
     const catalogResultRows = problemRows
@@ -1103,7 +1105,7 @@ export async function submitCatalogProblemExamResults(params: {
   userId: string
   catalogId: string
   answers: Record<string, string>
-  /** 각 시트의 `id` = `fasttrack_mock_exam_catalog_problems.problem_id` */
+  /** 각 시트의 `id` = 카탈로그 문항 PK(`id`; 레거시 스키마에서는 `problem_id`) */
   problemIds: string[]
 }): Promise<void> {
   const { userId, catalogId, answers, problemIds } = params
@@ -1112,9 +1114,9 @@ export async function submitCatalogProblemExamResults(params: {
 
   const { data: catProbRows, error: catErr } = await supabase
     .from('fasttrack_mock_exam_catalog_problems')
-    .select('problem_id')
+    .select('problem_id:id')
     .eq('catalog_id', catalogId.trim())
-    .in('problem_id', ids)
+    .in('id', ids)
   if (catErr) throw catErr
   const allowed = new Set((catProbRows ?? []).map((r) => (r as { problem_id: string }).problem_id))
 

@@ -122,6 +122,11 @@ function problemHasReadingPanel(p: MockTakeSheetProblem | undefined): boolean {
   )
 }
 
+/** 선지 선택 여부(공백·미선택은 미응답으로 간주) */
+function hasSelectedAnswer(value: string | undefined): boolean {
+  return (value ?? '').trim().length > 0
+}
+
 export function MockExamTakePage() {
   const { examId, catalogId } = useParams<{ examId?: string; catalogId?: string }>()
   const navigate = useNavigate()
@@ -135,6 +140,8 @@ export function MockExamTakePage() {
   const [err, setErr] = useState<string | null>(null)
   const [idx, setIdx] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  /** '다음' 또는 마지막 문항 '응시 완료'로 넘어갈 때 답이 있었던 문항만 네비에 풀이 표시 */
+  const [navAnswered, setNavAnswered] = useState<Record<string, boolean>>({})
   const [flagged, setFlagged] = useState<Record<string, boolean>>({})
   const [started] = useState(() => Date.now())
   const [remainSec, setRemainSec] = useState(0)
@@ -148,6 +155,7 @@ export function MockExamTakePage() {
     setPreviewFromCatalogDb(false)
     setIdx(0)
     setAnswers({})
+    setNavAnswered({})
     setFlagged({})
     ;(async () => {
       try {
@@ -409,7 +417,7 @@ export function MockExamTakePage() {
                 title={groupStart ? '이 문항부터 읽기 자료(본문)가 바뀝니다' : undefined}
                 className={`mock-take__num${i === idx ? ' mock-take__num--current' : ''}${
                   flagged[p.id] ? ' mock-take__num--flag' : ''
-                }${answers[p.id] ? ' mock-take__num--done' : ''}${
+                }${navAnswered[p.id] ? ' mock-take__num--done' : ''}${
                   groupStart ? ' mock-take__num--passage-group-start' : ''
                 }`}
                 onClick={() => setIdx(i)}
@@ -478,6 +486,15 @@ export function MockExamTakePage() {
               type="button"
               disabled={submitting}
               onClick={() => {
+                const pid = problems[idx]?.id
+                if (pid) {
+                  setNavAnswered((prev) => {
+                    const next = { ...prev }
+                    if (hasSelectedAnswer(answers[pid])) next[pid] = true
+                    else delete next[pid]
+                    return next
+                  })
+                }
                 if (idx >= problems.length - 1) {
                   void finish()
                 } else {
