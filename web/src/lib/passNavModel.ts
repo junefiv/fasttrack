@@ -9,8 +9,6 @@ import type {
 import {
   ACCURACY_ALERT_GAP_PP,
   DEVIATION_MAX_STREAK,
-  GPS_DEVIATION_PROGRESS_GAP,
-  PREP_WINDOW_DAYS,
   SOLVE_TIME_SLOW_RATIO,
   STAGNATION_SLOW_RATIO,
   TRAFFIC_GREEN_ACCURACY_DELTA,
@@ -18,6 +16,14 @@ import {
   TRAFFIC_YELLOW_ACCURACY_BAND,
 } from './passNavThresholds'
 import type { FocusSnapshot } from './passNavFocusStorage'
+
+/** 알림·집계 UI: subjects.category가 있으면 그것을 과목 표기로 쓰고, 없으면 name */
+export function passNavSubjectDisplayLabel(bundle: PassNavBundle, subjectId: string): string {
+  const s = bundle.subjects.find((x) => x.id === subjectId)
+  if (!s) return `과목 (${subjectId.slice(0, 8)}…)`
+  const c = (s.category ?? '').trim()
+  return c || s.name
+}
 
 export function getNextExamDate(now = new Date()): Date {
   const y = now.getFullYear()
@@ -31,11 +37,6 @@ export function getDDay(now = new Date()): number {
   const a = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const b = new Date(exam.getFullYear(), exam.getMonth(), exam.getDate()).getTime()
   return Math.round((b - a) / 86400000)
-}
-
-export function expectedPrepProgressPercent(dDay: number): number {
-  const elapsed = PREP_WINDOW_DAYS - Math.min(PREP_WINDOW_DAYS, Math.max(0, dDay))
-  return Math.min(100, Math.max(0, (elapsed / PREP_WINDOW_DAYS) * 100))
 }
 
 function num(v: unknown): number | null {
@@ -68,43 +69,6 @@ export function parseMockCategoryDetailRecord(
     out.set(key, { accuracy, avg_solve_time })
   }
   return out
-}
-
-export function avgUserLectureCompletion(bundle: PassNavBundle): number | null {
-  if (bundle.userLecture.length === 0) return null
-  let s = 0
-  let n = 0
-  for (const r of bundle.userLecture) {
-    const c = num(r.completion_rate)
-    if (c != null) {
-      s += c
-      n += 1
-    }
-  }
-  return n ? s / n : null
-}
-
-export function avgBenchLectureCompletionForUser(bundle: PassNavBundle): number | null {
-  const benchByLecture = new Map(bundle.benchLecture.map((b) => [b.lecture_id, b]))
-  let s = 0
-  let n = 0
-  for (const u of bundle.userLecture) {
-    const b = benchByLecture.get(u.lecture_id)
-    if (!b) continue
-    const c = num(b.completion_rate)
-    if (c != null) {
-      s += c
-      n += 1
-    }
-  }
-  return n ? s / n : null
-}
-
-export function isGpsPathDeviation(bundle: PassNavBundle, dDay: number): boolean {
-  const exp = expectedPrepProgressPercent(dDay)
-  const mine = avgUserLectureCompletion(bundle)
-  if (mine == null) return false
-  return mine + GPS_DEVIATION_PROGRESS_GAP < exp
 }
 
 function trafficForPair(
@@ -181,19 +145,18 @@ export function buildPassNavCategoryDetailRows(
   bundle: PassNavBundle,
   subjectScope: '__avg' | string,
 ): PassNavCategoryDetailRow[] {
-  const subName = new Map(bundle.subjects.map((s) => [s.id, s.name]))
   const map = new Map<string, PassNavCategoryDetailRow>()
 
   const takeUser = (u: UserMasteryRow) => {
     if (subjectScope !== '__avg' && u.subject_id !== subjectScope) return
-    mergeMasteryCategory(map, u.subject_id, u.category_label, subName.get(u.subject_id) ?? u.subject_id, {
+    mergeMasteryCategory(map, u.subject_id, u.category_label, passNavSubjectDisplayLabel(bundle, u.subject_id), {
       userSolveTime: num(u.avg_solve_time),
       userAccuracy: num(u.avg_accuracy),
     })
   }
   const takeBench = (b: BenchmarkMasteryRow) => {
     if (subjectScope !== '__avg' && b.subject_id !== subjectScope) return
-    mergeMasteryCategory(map, b.subject_id, b.category_label, subName.get(b.subject_id) ?? b.subject_id, {
+    mergeMasteryCategory(map, b.subject_id, b.category_label, passNavSubjectDisplayLabel(bundle, b.subject_id), {
       benchSolveTime: num(b.target_solve_time),
       benchAccuracy: num(b.target_accuracy),
     })
@@ -210,7 +173,7 @@ export function buildPassNavCategoryDetailRows(
     const sid = catalogToSubject.get(catalogId)
     if (!sid) return
     if (subjectScope !== '__avg' && sid !== subjectScope) return
-    const subjName = subName.get(sid) ?? sid
+    const subjName = passNavSubjectDisplayLabel(bundle, sid)
     const um = bundle.userMock.find((u) => u.catalog_id === catalogId)
     const bm = benchMockByCatalog.get(catalogId)
     const uMap = parseMockCategoryDetailRecord(um?.category_detail_stats ?? null)
@@ -268,7 +231,6 @@ export function buildPassNavLectureDetailRows(
   const lectureToSubject = new Map(bundle.lectures.map((l) => [l.id, l.subject_id]))
   const titleById = new Map(bundle.lectures.map((l) => [l.id, l.title]))
   const benchByLecture = new Map(bundle.benchLecture.map((b) => [b.lecture_id, b]))
-  const subName = new Map(bundle.subjects.map((s) => [s.id, s.name]))
 
   const out: PassNavLectureDetailRow[] = []
   for (const u of bundle.userLecture) {
@@ -279,7 +241,7 @@ export function buildPassNavLectureDetailRows(
     out.push({
       lectureId: u.lecture_id,
       subjectId: sid,
-      subjectName: subName.get(sid) ?? sid,
+      subjectName: passNavSubjectDisplayLabel(bundle, sid),
       lectureTitle: titleById.get(u.lecture_id) ?? `강의 (${u.lecture_id.slice(0, 8)}…)`,
       userCompletion: num(u.completion_rate),
       benchCompletion: b != null ? num(b.completion_rate) : null,
@@ -445,7 +407,6 @@ function collectUserMockAccuraciesForSubject(
 /** 풀이속도·수강률·정답률(과목별). 정답률은 mastery·mock 각 평균 후 combineAvg. */
 export function buildPassNavSubjectMetricRows(bundle: PassNavBundle): PassNavSubjectMetricRow[] {
   const catalogToSubject = new Map(bundle.catalogs.map((c) => [c.id, c.subject_id]))
-  const nameById = new Map(bundle.subjects.map((s) => [s.id, s.name]))
   const lectureToSubject = new Map(bundle.lectures.map((l) => [l.id, l.subject_id]))
 
   const benchMasteryAvg = (subjectId: string): number | null => {
@@ -533,19 +494,13 @@ export function buildPassNavSubjectMetricRows(bundle: PassNavBundle): PassNavSub
   }
 
   const subjectIds = collectSubjectIdsForPassNavMetrics(bundle, catalogToSubject)
-  subjectIds.sort((a, b) => {
-    const na = nameById.get(a)
-    const nb = nameById.get(b)
-    const aNamed = Boolean(na)
-    const bNamed = Boolean(nb)
-    if (aNamed !== bNamed) return aNamed ? -1 : 1
-    if (na && nb) return na.localeCompare(nb, 'ko')
-    return a.localeCompare(b)
-  })
+  subjectIds.sort((a, b) =>
+    passNavSubjectDisplayLabel(bundle, a).localeCompare(passNavSubjectDisplayLabel(bundle, b), 'ko'),
+  )
 
   return subjectIds.map((id) => ({
     subjectId: id,
-    subjectName: nameById.get(id) ?? `과목 (${id.slice(0, 8)}…)`,
+    subjectName: passNavSubjectDisplayLabel(bundle, id),
     benchSec: combineAvg(benchMasteryAvg(id), benchMockAvg(id)),
     userSec: combineAvg(userMasteryAvg(id), userMockAvg(id)),
     benchCompletionPct: benchCompletionAvg(id),
@@ -557,85 +512,66 @@ export function buildPassNavSubjectMetricRows(bundle: PassNavBundle): PassNavSub
   }))
 }
 
-export function buildRadarRows(bundle: PassNavBundle): { metric: string; bench: number; user: number }[] {
-  const uProg = avgUserLectureCompletion(bundle)
-  const bProg = avgBenchLectureCompletionForUser(bundle)
-  const clamp = (x: number) => Math.min(100, Math.max(0, x))
-  const progUser = uProg != null ? clamp(uProg) : 0
-  const progBench = bProg != null ? clamp(bProg) : clamp(progUser + 15)
+/** SolveSpeedBarSection 전체(AVG)와 동일: 값 있는 과목만 산술평균 */
+function meanAcrossSubjectMetrics(values: (number | null)[]): number | null {
+  const xs = values.filter((v): v is number => v != null && !Number.isNaN(v))
+  if (xs.length === 0) return null
+  return xs.reduce((a, b) => a + b, 0) / xs.length
+}
 
-  const categoryUnified = buildPassNavCategoryDetailRows(bundle, '__avg')
-  let accU = 0
-  let accB = 0
-  let nAcc = 0
-  for (const r of categoryUnified) {
-    const ua = r.userAccuracy
-    const ba = r.benchAccuracy
-    if (ua != null && ba != null) {
-      accU += ua
-      accB += ba
-      nAcc += 1
-    }
+function clamp0100(x: number): number {
+  return Math.min(100, Math.max(0, x))
+}
+
+/** 수강률·정답률 등: 벤치 대비 달성률(%). 벤치 없으면 사용자 값을 0~100으로 간주 */
+function scoreHigherBetter(user: number | null, bench: number | null): number | null {
+  if (user == null || Number.isNaN(user)) return null
+  if (bench != null && bench > 0 && !Number.isNaN(bench)) {
+    return clamp0100((user / bench) * 100)
   }
-  const accUser = nAcc ? clamp(accU / nAcc) : 40
-  const accBench = nAcc ? clamp(accB / nAcc) : 65
+  return clamp0100(user)
+}
 
-  let spU = 0
-  let spB = 0
-  let nSp = 0
-  for (const r of categoryUnified) {
-    const ut = r.userSolveTime
-    const bt = r.benchSolveTime
-    if (ut != null && bt != null && ut > 0 && bt > 0) {
-      spU += 100 / ut
-      spB += 100 / bt
-      nSp += 1
-    }
+/** 초 단위: 더 빠를수록 좋음 → benchSec/userSec 비율 */
+function scoreSpeedVsBench(userSec: number | null, benchSec: number | null): number | null {
+  if (userSec == null || !(userSec > 0) || Number.isNaN(userSec)) return null
+  if (benchSec != null && benchSec > 0 && !Number.isNaN(benchSec)) {
+    return clamp0100((benchSec / userSec) * 100)
   }
-  const speedUser = nSp ? clamp((spU / nSp) * 3) : 45
-  const speedBench = nSp ? clamp((spB / nSp) * 3) : 70
+  return null
+}
 
-  const maxStreakUser = bundle.userLecture.reduce((m, r) => Math.max(m, r.consecutive_learning_days ?? 0), 0)
-  const benchByL = new Map(bundle.benchLecture.map((x) => [x.lecture_id, x]))
-  let streakB = 0
-  let nb = 0
-  for (const u of bundle.userLecture) {
-    const b = benchByL.get(u.lecture_id)
-    if (b?.consecutive_learning_days != null) {
-      streakB += b.consecutive_learning_days
-      nb += 1
-    }
+/** 연속 학습일: 벤치 대비 달성률. 벤치 없으면 일수×8을 0~100으로 스케일(구 레이더와 동일 계열) */
+function scoreStreakVsBench(userDays: number | null, benchDays: number | null): number | null {
+  if (userDays == null || Number.isNaN(userDays)) return null
+  if (benchDays != null && benchDays > 0 && !Number.isNaN(benchDays)) {
+    return clamp0100((userDays / benchDays) * 100)
   }
-  const streakBenchAvg = nb ? streakB / nb : 10
-  const streakUser = maxStreakUser
-  const streakUserN = clamp(streakUser * 8)
-  const streakBenchN = clamp(streakBenchAvg * 8)
+  return clamp0100(userDays * 8)
+}
 
-  let fU = 0
-  let fB = 0
-  let nf = 0
-  for (const u of bundle.userLecture) {
-    const b = benchByL.get(u.lecture_id)
-    const uf = num(u.focus_score)
-    const bf = b != null ? num(b.focus_score) : null
-    if (uf != null) {
-      fU += uf
-      nf += 1
-    }
-    if (bf != null) {
-      fB += bf
-    }
-  }
-  const focusUser = nf ? clamp(fU / nf) : 50
-  const focusBench = nf ? clamp(fB / Math.max(1, nf)) : 65
+/**
+ * 관제 센터 링: 과목 막대(SolveSpeedBarSection)와 같은 집계로
+ * 풀이 속도·수강률·정답률·연속 학습일 각 25% 가중 (미산출 분은 0점으로 반영).
+ */
+export function passNavSubjectBarOverallPct(rows: PassNavSubjectMetricRow[]): number {
+  if (rows.length === 0) return 0
+  const sorted = [...rows].sort((a, b) => a.subjectName.localeCompare(b.subjectName, 'ko'))
+  const avgBenchSec = meanAcrossSubjectMetrics(sorted.map((r) => r.benchSec))
+  const avgUserSec = meanAcrossSubjectMetrics(sorted.map((r) => r.userSec))
+  const avgBenchLec = meanAcrossSubjectMetrics(sorted.map((r) => r.benchCompletionPct))
+  const avgUserLec = meanAcrossSubjectMetrics(sorted.map((r) => r.userCompletionPct))
+  const avgBenchAcc = meanAcrossSubjectMetrics(sorted.map((r) => r.benchAccuracyPct))
+  const avgUserAcc = meanAcrossSubjectMetrics(sorted.map((r) => r.userAccuracyPct))
+  const avgBenchStreak = meanAcrossSubjectMetrics(sorted.map((r) => r.benchConsecutiveDays))
+  const avgUserStreak = meanAcrossSubjectMetrics(sorted.map((r) => r.userConsecutiveDays))
 
-  return [
-    { metric: '강의 진도율', bench: progBench, user: progUser },
-    { metric: '문제 정답률', bench: accBench, user: accUser },
-    { metric: '풀이 속도', bench: speedBench, user: speedUser },
-    { metric: '학습 연속성', bench: streakBenchN, user: streakUserN },
-    { metric: '집중도', bench: focusBench, user: focusUser },
-  ]
+  const sp = scoreSpeedVsBench(avgUserSec, avgBenchSec)
+  const lec = scoreHigherBetter(avgUserLec, avgBenchLec)
+  const acc = scoreHigherBetter(avgUserAcc, avgBenchAcc)
+  const st = scoreStreakVsBench(avgUserStreak, avgBenchStreak)
+
+  return 0.25 * (sp ?? 0) + 0.25 * (lec ?? 0) + 0.25 * (acc ?? 0) + 0.25 * (st ?? 0)
 }
 
 export function maxFocusDropRatio(bundle: PassNavBundle, prev: FocusSnapshot): number {

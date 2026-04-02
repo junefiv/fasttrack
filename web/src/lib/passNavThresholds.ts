@@ -1,4 +1,4 @@
-﻿export const TRAFFIC_GREEN_ACCURACY_DELTA = 5
+export const TRAFFIC_GREEN_ACCURACY_DELTA = 5
 export const TRAFFIC_YELLOW_ACCURACY_BAND = 5
 export const TRAFFIC_RED_ACCURACY_DELTA = -10
 export const SOLVE_TIME_SLOW_RATIO = 1.2
@@ -6,5 +6,3 @@ export const STAGNATION_SLOW_RATIO = 1.2
 export const ACCURACY_ALERT_GAP_PP = 15
 export const DEVIATION_MAX_STREAK = 1
 export const FOCUS_DROP_RATIO = 0.3
-export const GPS_DEVIATION_PROGRESS_GAP = 10
-export const PREP_WINDOW_DAYS = 180

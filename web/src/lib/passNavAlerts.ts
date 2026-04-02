@@ -1,9 +1,12 @@
-import type { PassNavBundle, PassNavCategoryRemedy } from '../types/passNav'
+import { lectureBrowseDeepLink } from './lectureVideosNav'
+import { questionsBankDrillPath } from './questionsBankNav'
+import type { PassNavBundle, PassNavCategoryRemedy, PassNavDbAlertRow } from '../types/passNav'
 import {
   buildCategoryCompare,
   buildPassNavSubjectBenchGapSummaries,
   hasDeviationStreak,
   maxFocusDropRatio,
+  passNavSubjectDisplayLabel,
   recentAccuracyGapVsTarget,
   subjectSummaryCoversStreak,
   summarizeFocusVsBench,
@@ -102,7 +105,9 @@ function mergeRecentRemedy(
     category_label: recent.category_label,
     videoHref: recent.videoHref ?? cat.videoHref,
     ebookHref: recent.ebookHref ?? cat.ebookHref,
-    drillHref: recent.drillHref.includes('question=') ? recent.drillHref : cat.drillHref,
+    drillHref: recent.drillHref?.includes('question=')
+      ? recent.drillHref
+      : (cat.drillHref ?? recent.drillHref ?? null),
     videoHint: recent.videoHint ?? cat.videoHint,
     ebookHint: recent.ebookHint ?? cat.ebookHint,
     drillHint: recent.drillHint ?? cat.drillHint,
@@ -113,7 +118,7 @@ function overlayPrescriptionDrill(
   base: PassNavCategoryRemedy | null,
   presc: PassNavCategoryRemedy | null,
 ): PassNavCategoryRemedy | null {
-  if (!presc?.drillHref.includes('question=')) return base
+  if (!presc?.drillHref?.includes('question=')) return base
   if (!base) return presc
   return {
     ...base,
@@ -159,7 +164,7 @@ export function buildPassNavAlerts(
         id: `stagnation-${c.subject_id}-${c.category_label}`,
         severity: 'medium',
         title: '정체 경보',
-        body: `「${c.category_label}」에서 문제 하나 푸는 데 평균 ${ut.toFixed(1)}초가 걸립니다. 목표 대학 합격군 기준은 약 ${bt.toFixed(1)}초라서, 그보다 한참 더 느린 편이에요.`,
+        body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 문제 하나 푸는 데 평균 ${ut.toFixed(1)}초가 걸립니다. 목표 대학 합격군 기준은 약 ${bt.toFixed(1)}초라서, 그보다 한참 더 느린 편이에요.`,
         actionLabel: '문제 은행',
         actionHref: '/study/mock-exam/questions-bank',
       })
@@ -231,7 +236,6 @@ export function buildPassNavAlertHistory(
   const streakExplainedBySummary = benchLinked && subjectBenchSummaries.some(subjectSummaryCoversStreak)
   const catById = new Map(bundle.catalogs.map((c) => [c.id, c.title]))
   const titleById = new Map(bundle.lectures.map((l) => [l.id, l.title]))
-  const subName = new Map(bundle.subjects.map((s) => [s.id, s.name]))
   const userByLecture = new Map(bundle.userLecture.map((u) => [u.lecture_id, u]))
 
   for (const s of subjectBenchSummaries) {
@@ -337,7 +341,7 @@ export function buildPassNavAlertHistory(
       pillar: 'performance',
       pillarLabel: PILLAR_LABEL.performance,
       title: '정확도 경보',
-      body: `「${c.category_label}」에서 내 정답률은 ${ua.toFixed(1)}%인데, 목표 대학 합격군이 보통 맞추는 수준(${ba.toFixed(1)}%)보다 ${gap.toFixed(0)}%p 낮아요.`,
+      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 내 정답률은 ${ua.toFixed(1)}%인데, 목표 대학 합격군이 보통 맞추는 수준(${ba.toFixed(1)}%)보다 ${gap.toFixed(0)}%p 낮아요.`,
       tone: gap >= 15 ? 'danger' : 'warn',
       occurredAt: null,
       sortMs: null,
@@ -408,7 +412,7 @@ export function buildPassNavAlertHistory(
         pillar: 'performance',
         pillarLabel: PILLAR_LABEL.performance,
         title: '기출 성적 이탈',
-        body: `「${u.exam_name}」(${subName.get(u.subject_id) ?? u.subject_id})에서 내 점수는 ${us.toFixed(0)}점인데, 목표는 ${ts.toFixed(0)}점이에요.`,
+        body: `「${u.exam_name}」(${passNavSubjectDisplayLabel(bundle, u.subject_id)})에서 내 점수는 ${us.toFixed(0)}점인데, 목표는 ${ts.toFixed(0)}점이에요.`,
         tone: 'danger',
         occurredAt: u.updated_at,
         sortMs: Number.isFinite(upMs) ? upMs : null,
@@ -447,7 +451,7 @@ export function buildPassNavAlertHistory(
       pillar: 'stagnation',
       pillarLabel: PILLAR_LABEL.stagnation,
       title: '정체 경보',
-      body: `「${c.category_label}」은(는) 문제 하나당 평균 ${ut.toFixed(1)}초가 걸립니다. 합격군 기준 약 ${bt.toFixed(1)}초보다 약 ${sec}초 더 걸리는 셈이라, 속도를 끌어올릴 여지가 있어요.`,
+      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형은(는) 문제 하나당 평균 ${ut.toFixed(1)}초가 걸립니다. 합격군 기준 약 ${bt.toFixed(1)}초보다 약 ${sec}초 더 걸리는 셈이라, 속도를 끌어올릴 여지가 있어요.`,
       tone: 'warn',
       occurredAt: null,
       sortMs: null,
@@ -587,7 +591,7 @@ export function buildPassNavAlertHistory(
         pillar: 'performance',
         pillarLabel: '개선 · 유지',
         title: '복귀 성공',
-        body: `「${win.category_label}」 정답률이 합격군 기준보다 ${(win.userAccuracy! - win.benchAccuracy!).toFixed(0)}%p 더 높아요. 지금 리듬을 유지하면 좋겠습니다.`,
+        body: `「${win.subject_name}」 과목의 「${win.category_label}」 유형 정답률이 합격군 기준보다 ${(win.userAccuracy! - win.benchAccuracy!).toFixed(0)}%p 더 높아요. 지금 리듬을 유지하면 좋겠습니다.`,
         tone: 'success',
         occurredAt: null,
         displayTime: '최근',
@@ -596,4 +600,69 @@ export function buildPassNavAlertHistory(
     : null
 
   return successBlock ? [...threadItems, successBlock] : threadItems
+}
+
+/** 관제 센터 `이탈 경보 히스토리` — `public.alerts` 행을 스레드 카드 형식으로 변환 */
+export function mapPassNavDbAlertsToHistoryItems(
+  bundle: PassNavBundle,
+  rows: PassNavDbAlertRow[],
+): PassNavHistoryItem[] {
+  return rows.map((row) => {
+    const code = row.alert_code ?? ''
+    let pillar: PassNavHistoryPillar = 'performance'
+    if (code === 'required_path_missing') pillar = 'action'
+    else if (code === 'mastery_stagnation_solve' || code === 'mock_stagnation_solve') pillar = 'stagnation'
+
+    const tone: PassNavHistoryTone =
+      code === 'required_path_missing' ||
+      code === 'mastery_perf_accuracy_gap' ||
+      code === 'mock_perf_accuracy'
+        ? 'danger'
+        : 'warn'
+
+    const cl = row.category_label
+    const remedyLabel =
+      cl && !cl.startsWith('lecture:') && !cl.startsWith('catalog:') ? cl : null
+    const baseRemedy = resolveRemedy(bundle, remedyLabel)
+
+    let remedy: PassNavCategoryRemedy | null = null
+    if (baseRemedy) {
+      remedy = {
+        ...baseRemedy,
+        videoHref: lectureBrowseDeepLink(row.related_lecture_id),
+        ebookHref: row.related_ebook_page_id ? '/ebook' : null,
+        drillHref: questionsBankDrillPath({
+          subjectId: row.subject_id,
+          questionId: row.related_question_id,
+        }),
+      }
+    } else if (row.related_lecture_id || row.related_ebook_page_id || row.related_question_id) {
+      remedy = {
+        category_label: remedyLabel ?? row.alert_code ?? 'alert',
+        videoHref: lectureBrowseDeepLink(row.related_lecture_id),
+        ebookHref: row.related_ebook_page_id ? '/ebook' : null,
+        drillHref: questionsBankDrillPath({
+          subjectId: row.subject_id,
+          questionId: row.related_question_id,
+        }),
+        videoHint: null,
+        ebookHint: null,
+        drillHint: null,
+      }
+    }
+
+    const displayTime = formatRelativeKo(row.created_at) ?? '—'
+
+    return {
+      id: row.id,
+      pillar,
+      pillarLabel: PILLAR_LABEL[pillar],
+      title: row.title,
+      body: row.body,
+      tone,
+      occurredAt: row.created_at,
+      displayTime,
+      remedy,
+    }
+  })
 }

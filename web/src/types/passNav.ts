@@ -9,7 +9,7 @@ export type UserLectureRow = { id: string; user_id: string; lecture_id: string; 
 export type UserMockExamStatRow = { id: string; user_id: string; catalog_id: string; private_avg_solve_time_per_prob: number | null; private_avg_accuracy: number | null; category_detail_stats: Record<string, unknown> | null }
 export type UserOfficialExamStatRow = { id: string; user_id: string; subject_id: string; exam_name: string; total_score: number | null; correct_count: number | null; total_questions: number | null; updated_at: string | null }
 export type LectureMetaRow = { id: string; title: string; subject_id: string }
-export type SubjectMetaRow = { id: string; name: string }
+export type SubjectMetaRow = { id: string; name: string; category: string | null }
 export type RecentAttemptRow = { source: 'bank' | 'catalog'; submitted_at: string; is_correct: boolean; category_label: string | null; subject_id: string | null; question_id: string; ebook_page_id: string | null; lecture_caption_id: string | null }
 export type PassNavTraffic = 'green' | 'yellow' | 'red'
 export type CategoryMasteryCompare = { subject_id: string; subject_name: string; category_label: string; userAccuracy: number | null; userSolveTime: number | null; benchAccuracy: number | null; benchSolveTime: number | null; gapAccuracy: number | null; gapTime: number | null; traffic: PassNavTraffic }
@@ -31,10 +31,34 @@ export type PassNavCategoryRemedy = {
   category_label: string
   videoHref: string | null
   ebookHref: string | null
-  drillHref: string
+  /** null이면 「관련 문제」 링크 비표시 (예: alerts.related_question_id 없음) */
+  drillHref: string | null
   videoHint: string | null
   ebookHint: string | null
   drillHint: string | null
+}
+
+/** public.alerts — Pass-Nav 알림 센터용 */
+export type PassNavDbAlertRow = {
+  id: string
+  user_id: string
+  benchmark_id: string | null
+  alert_code: string | null
+  title: string
+  body: string
+  subject_id: string | null
+  category_label: string | null
+  related_lecture_id: string | null
+  related_ebook_page_id: string | null
+  related_question_id: string | null
+  benchmark_snapshot: Record<string, unknown>
+  user_snapshot: Record<string, unknown>
+  resolution_rule: Record<string, unknown>
+  resolved: boolean
+  resolved_at: string | null
+  resolution_evaluated_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type PassNavBundle = {

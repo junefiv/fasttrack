@@ -1,23 +1,35 @@
 import { useEffect, useState } from 'react'
 import {
+  Alert,
   Badge,
   Box,
+  Button,
   Group,
   LoadingOverlay,
+  Modal,
   Paper,
   RingProgress,
+  ScrollArea,
   SegmentedControl,
   Stack,
   Text,
   Title,
 } from '@mantine/core'
 import { supabase } from '../../../lib/supabase'
+import { generatePassNavNavigatorSummaryWithGemini } from '../../../lib/gemini'
+import { questionsBankDrillPath } from '../../../lib/questionsBankNav'
+import { messageFromUnknownError } from '../../../lib/unknownError'
 import type { PassNavHistoryItem } from '../../../lib/passNavAlerts'
 import type { PassNavBundle, PassNavSubjectMetricRow } from '../../../types/passNav'
-import type { DualCards } from '../../../lib/passNavRecommendations'
-import { GpsRoadmap } from './GpsRoadmap'
+import {
+  buildPassNavNavigatorGeminiPayload,
+  buildPassNavNavigatorReportPlainText,
+  parsePassNavNavigatorGeminiJson,
+  passNavigatorAiSectionsFromSummary,
+  type PassNavNavigatorReportSection,
+} from '../../../lib/passNavNavigatorReport'
+import { PassNavStudyTrendChart } from './PassNavStudyTrendChart'
 import { PassNavSubjectMetricsPanel } from './PassNavSubjectMetricsPanel'
-import { DualRecommendationDeck } from './DualRecommendationDeck'
 
 type Props = {
   bundle: PassNavBundle
@@ -27,10 +39,6 @@ type Props = {
   alertHistory: PassNavHistoryItem[]
   subjectMetricRows: PassNavSubjectMetricRow[]
   dDay: number
-  expectedProgress: number
-  userProgress: number | null
-  gpsDeviated: boolean
-  dual: DualCards
   overallPct: number
 }
 
@@ -42,10 +50,6 @@ export function PassNavCommandCenter({
   alertHistory,
   subjectMetricRows,
   dDay,
-  expectedProgress,
-  userProgress,
-  gpsDeviated,
-  dual,
   overallPct,
 }: Props) {
   const g = bundle.primaryGoal
@@ -56,6 +60,55 @@ export function PassNavCommandCenter({
     id: string | null
     message: string | null
   }>({ status: 'idle', id: null, message: null })
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
+  const [reportAiSections, setReportAiSections] = useState<PassNavNavigatorReportSection[] | null>(null)
+
+  const goalLabel = g
+    ? `${activeGoalPriority}지망 ${g.university_name} ${g.department_name}`
+    : '목표 미설정'
+
+  const startNavigatorReport = () => {
+    setReportOpen(true)
+    setReportError(null)
+    setReportAiSections(null)
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? ''
+    if (!apiKey) {
+      setReportError('VITE_GEMINI_API_KEY 가 .env 에 없습니다. web/.env.local 을 확인하고 개발 서버를 다시 시작하세요.')
+      return
+    }
+    setReportLoading(true)
+    void (async () => {
+      try {
+        const payload = buildPassNavNavigatorGeminiPayload({
+          bundle,
+          subjectMetricRows,
+          alertHistory,
+          overallPct,
+          dDay,
+          goalLabel,
+          hasBenchmark: Boolean(bundle.benchmarkId),
+        })
+        const raw = await generatePassNavNavigatorSummaryWithGemini({ apiKey, payload })
+        const summary = parsePassNavNavigatorGeminiJson(raw)
+        setReportAiSections(passNavigatorAiSectionsFromSummary(summary))
+      } catch (e) {
+        setReportError(messageFromUnknownError(e))
+      } finally {
+        setReportLoading(false)
+      }
+    })()
+  }
+
+  const closeReport = () => {
+    setReportOpen(false)
+    setReportError(null)
+    setReportAiSections(null)
+    setReportLoading(false)
+  }
+
+  const sectionsForCopy = reportAiSections ?? []
 
   useEffect(() => {
     if (bundle.benchmarkId || !g) {
@@ -100,9 +153,10 @@ export function PassNavCommandCenter({
       <Group justify="space-between" align="flex-start" wrap="wrap">
         <div>
           <Title order={2}>FastTrack Pass-Nav 2.0</Title>
-          <Text c="dimmed" size="sm">
-            합격 관제 센터 · 데이터는 거짓말하지 않습니다
-          </Text>
+          <Text size="sm" c="dimmed" ta="left">
+              D-Day {dDay}일 · 데이터는 거짓말하지 않습니다
+            </Text>
+          
         </div>
         <Stack gap="sm" align="flex-end" miw={{ base: '100%', sm: 280 }}>
           {goalChoices.length > 1 ? (
@@ -128,61 +182,110 @@ export function PassNavCommandCenter({
       </Group>
 
       <Paper withBorder p="lg" radius="md">
-        <Group align="center" gap="xl" wrap="wrap">
-          <RingProgress
-            size={120}
-            thickness={12}
-            sections={[{ value: overallPct, color: 'teal' }]}
-            label={
-              <Text ta="center" size="sm" fw={700}>
-                {overallPct.toFixed(0)}%
-              </Text>
-            }
-          />
-          <div>
-            <Text fw={600}>종합 진행 (파생 지표 평균)</Text>
-            <Text size="sm" c="dimmed">
-              D-Day {dDay}일 · 수능 앵커 11/12
-            </Text>
+        <Stack gap="md">
+          <Group align="flex-start" gap="xl" wrap="wrap">
+            <Stack gap="xs" align="center">
+              <Text fw={600}>종합 평가</Text>
+
+              <RingProgress
+                size={120}
+                thickness={12}
+                sections={[{ value: overallPct, color: 'teal' }]}
+                label={
+                  <Text ta="center" size="sm" fw={700}>
+                    {overallPct.toFixed(0)}%
+                  </Text>
+                }
+              />
+            </Stack>
+            <PassNavStudyTrendChart />
             {!bundle.benchmarkId ? (
-              <Stack gap={4} mt={4}>
-                <Text size="sm" c="yellow">
-                  벤치마크 행이 목표와 매칭되지 않았습니다. university_benchmarks 대학·학과명을 확인하세요.
-                </Text>
-                {g ? (
-                  exactBenchLookup.status === 'loading' ? (
-                    <Text size="xs" c="dimmed">
-                      선택 지망 기준 university_benchmarks 동일명(문자열 완전 일치) 조회 중…
-                    </Text>
-                  ) : exactBenchLookup.status === 'err' ? (
-                    <Text size="xs" c="red">
-                      조회 오류: {exactBenchLookup.message}
-                    </Text>
-                  ) : exactBenchLookup.status === 'ok' && exactBenchLookup.id ? (
-                    <Text size="xs" c="cyan" style={{ wordBreak: 'break-all' }}>
-                      DB 동일 university_name·department_name 행 id: {exactBenchLookup.id}
-                    </Text>
-                  ) : exactBenchLookup.status === 'ok' ? (
-                    <Text size="xs" c="dimmed">
-                      university_benchmarks에 해당 문자열과 완전 일치하는 행 없음 · 목표 「{g.university_name}」 / 「
-                      {g.department_name}」
-                    </Text>
-                  ) : null
-                ) : null}
-              </Stack>
+              <div>
+                <Stack gap={4} mt={4}>
+                  <Text size="sm" c="yellow">
+                    벤치마크 행이 목표와 매칭되지 않았습니다. university_benchmarks 대학·학과명을 확인하세요.
+                  </Text>
+                  {g ? (
+                    exactBenchLookup.status === 'loading' ? (
+                      <Text size="xs" c="dimmed">
+                        선택 지망 기준 university_benchmarks 동일명(문자열 완전 일치) 조회 중…
+                      </Text>
+                    ) : exactBenchLookup.status === 'err' ? (
+                      <Text size="xs" c="red">
+                        조회 오류: {exactBenchLookup.message}
+                      </Text>
+                    ) : exactBenchLookup.status === 'ok' && exactBenchLookup.id ? (
+                      <Text size="xs" c="cyan" style={{ wordBreak: 'break-all' }}>
+                        DB 동일 university_name·department_name 행 id: {exactBenchLookup.id}
+                      </Text>
+                    ) : exactBenchLookup.status === 'ok' ? (
+                      <Text size="xs" c="dimmed">
+                        university_benchmarks에 해당 문자열과 완전 일치하는 행 없음 · 목표 「{g.university_name}」 / 「
+                        {g.department_name}」
+                      </Text>
+                    ) : null
+                  ) : null}
+                </Stack>
+              </div>
             ) : null}
-          </div>
-        </Group>
+          </Group>
+          <Button variant="light" color="teal" onClick={startNavigatorReport}>
+            네비게이터 리포트 생성
+          </Button>
+        </Stack>
       </Paper>
 
-      <Paper withBorder p="md" radius="md">
-        <GpsRoadmap
-          dDay={dDay}
-          expectedProgress={expectedProgress}
-          userProgress={userProgress}
-          deviated={gpsDeviated}
-        />
-      </Paper>
+      <Modal
+        opened={reportOpen}
+        onClose={closeReport}
+        title="Pass-Nav 네비게이터 리포트"
+        size="xl"
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        <Group justify="flex-end" mb="sm">
+          <Button
+            size="xs"
+            variant="default"
+            disabled={!reportAiSections?.length}
+            onClick={() => {
+              if (!reportAiSections?.length) return
+              void navigator.clipboard.writeText(buildPassNavNavigatorReportPlainText(sectionsForCopy))
+            }}
+          >
+            요약 복사
+          </Button>
+        </Group>
+        <Stack gap="md" pr="sm">
+          {reportError ? (
+            <Alert color="red" title="리포트 생성 오류">
+              {reportError}
+            </Alert>
+          ) : null}
+          {reportLoading ? (
+            <Text size="sm" c="dimmed">
+              레포트를 생성하기 위해 학습데이터들을 수집중입니다.
+            </Text>
+          ) : null}
+          {reportAiSections?.length ? (
+            <Stack gap="lg">
+              {reportAiSections.map((s) => (
+                <div key={s.id}>
+                  <Text fw={700} size="sm" mb={6}>
+                    {s.title}
+                  </Text>
+                  <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                    {s.body}
+                  </Text>
+                </div>
+              ))}
+            </Stack>
+          ) : !reportLoading && !reportError ? (
+            <Text size="sm" c="dimmed">
+              요약이 아직 없습니다. 잠시 후 다시 시도하세요.
+            </Text>
+          ) : null}
+        </Stack>
+      </Modal>
 
       <Paper withBorder p="md" radius="md">
         <PassNavSubjectMetricsPanel
@@ -192,8 +295,6 @@ export function PassNavCommandCenter({
           alertHistory={alertHistory}
         />
       </Paper>
-
-      <DualRecommendationDeck cards={dual} />
 
       <Paper withBorder p="md" radius="md">
         <Text size="sm" fw={600} mb="xs">
@@ -208,7 +309,16 @@ export function PassNavCommandCenter({
             {bundle.bankQuestionsForWeakTags.slice(0, 5).map((q) => (
               <div key={q.question_id}>
                 · {q.category_label ?? '—'} —{' '}
-                <a href="/study/mock-exam/questions-bank">문제 은행에서 풀이</a>
+                <a
+                  href={
+                    questionsBankDrillPath({
+                      subjectId: q.subject_id,
+                      questionId: q.question_id,
+                    }) ?? '/study/mock-exam'
+                  }
+                >
+                  문제 은행에서 풀이
+                </a>
               </div>
             ))}
           </Text>

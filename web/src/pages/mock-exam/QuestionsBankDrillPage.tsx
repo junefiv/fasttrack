@@ -110,9 +110,13 @@ async function pickNextQuestion(
 
 export function QuestionsBankDrillPage() {
   const [searchParams] = useSearchParams()
-  const subjectId = searchParams.get('subject')?.trim() ?? ''
+  const subjectFromUrl = searchParams.get('subject')?.trim() ?? ''
   const deepLinkQuestionId = searchParams.get('question')?.trim() ?? ''
   const userId = getFasttrackUserId()
+
+  /** URL에 `question`만 있고 `subject`가 없을 때, 문항 행에서 과목 ID를 채움 */
+  const [resolvedSubjectId, setResolvedSubjectId] = useState<string | null>(null)
+  const [subjectBootstrapErr, setSubjectBootstrapErr] = useState<string | null>(null)
 
   const [subjects, setSubjects] = useState<SubjectRow[]>([])
   const [bankRow, setBankRow] = useState<QuestionsBankRow | null>(null)
@@ -138,6 +142,33 @@ export function QuestionsBankDrillPage() {
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [loadingNext, setLoadingNext] = useState(false)
+
+  const subjectId = subjectFromUrl || resolvedSubjectId || ''
+
+  useEffect(() => {
+    setResolvedSubjectId(null)
+    setSubjectBootstrapErr(null)
+    if (subjectFromUrl || !deepLinkQuestionId) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const row = await fetchQuestionsBankQuestionById(deepLinkQuestionId)
+        if (cancelled) return
+        if (!row) {
+          setSubjectBootstrapErr('해당 문항을 찾을 수 없습니다.')
+          return
+        }
+        setResolvedSubjectId(row.subject_id)
+      } catch (e) {
+        if (!cancelled) {
+          setSubjectBootstrapErr(messageFromUnknownError(e) || '문항을 불러오지 못했습니다.')
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [subjectFromUrl, deepLinkQuestionId])
 
   const isNarrow = useMediaQuery('(max-width: 960px)')
   const [readingDrawerOpen, { open: openReadingDrawer, close: closeReadingDrawer }] = useDisclosure(false)
@@ -367,10 +398,36 @@ export function QuestionsBankDrillPage() {
     })
   }
 
-  if (!subjectId) {
+  if (!subjectFromUrl && !deepLinkQuestionId) {
     return (
       <div className="mock-take mock-take--centered">
         <p>과목이 지정되지 않았습니다.</p>
+        <p style={{ fontSize: '0.9rem', opacity: 0.85, maxWidth: 420, marginTop: 8 }}>
+          문제은행 드릴은 URL에 과목(<code>subject</code>) 또는 문항(<code>question</code>)이 필요합니다. 링크에
+          <code>?subject=…&amp;question=…</code> 형태로 붙어 있는지 확인해 주세요.
+        </p>
+        <Link to="/study/mock-exam">모의고사 · 드릴 홈으로</Link>
+      </div>
+    )
+  }
+
+  if (!subjectFromUrl && deepLinkQuestionId && !subjectId && !subjectBootstrapErr) {
+    return <div className="mock-take mock-take--centered">문항 정보를 불러오는 중…</div>
+  }
+
+  if (!subjectFromUrl && deepLinkQuestionId && subjectBootstrapErr) {
+    return (
+      <div className="mock-take mock-take--centered">
+        <p>{subjectBootstrapErr}</p>
+        <Link to="/study/mock-exam">모의고사 · 드릴 홈으로</Link>
+      </div>
+    )
+  }
+
+  if (!subjectId) {
+    return (
+      <div className="mock-take mock-take--centered">
+        <p>과목을 확인할 수 없습니다.</p>
         <Link to="/study/mock-exam">모의고사 · 드릴 홈으로</Link>
       </div>
     )

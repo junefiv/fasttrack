@@ -86,7 +86,7 @@ export function MockDrillHomePage() {
   const questionsBankDrillHref =
     activeSubjectId != null
       ? `/study/mock-exam/questions-bank?subject=${encodeURIComponent(activeSubjectId)}`
-      : '/study/mock-exam/questions-bank'
+      : '/study/mock-exam'
 
   const drillUserId = getFasttrackUserId()
 

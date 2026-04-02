@@ -12,8 +12,8 @@ import {
   Text,
   Title,
 } from '@mantine/core'
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import type { Lecture, LectureSession, Subject } from '../../types/lectures'
 import './VideosBrowsePage.css'
@@ -41,6 +41,10 @@ function matchInstructorField(lecture: Lecture, instructorKey: string): boolean 
 }
 
 export function VideosBrowsePage() {
+  const [searchParams] = useSearchParams()
+  const deepLectureId = searchParams.get('lecture')?.trim() ?? ''
+  const deepLinkAppliedFor = useRef<string>('')
+
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [lectures, setLectures] = useState<Lecture[]>([])
   const [sessions, setSessions] = useState<LectureSession[]>([])
@@ -87,6 +91,23 @@ export function VideosBrowsePage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    deepLinkAppliedFor.current = ''
+  }, [deepLectureId])
+
+  useEffect(() => {
+    if (load.status !== 'ok' || !deepLectureId) return
+    if (deepLinkAppliedFor.current === deepLectureId) return
+    const lec = lectures.find((l) => l.id === deepLectureId)
+    if (!lec) return
+    deepLinkAppliedFor.current = deepLectureId
+    const instructorKey = lec.instructor.trim() || '이름 없음'
+    setSubjectTab(lec.subject_id)
+    setSelectedInstructor(instructorKey)
+    setSelectedLectureId(lec.id)
+    setDrillStep('sessions')
+  }, [load.status, deepLectureId, lectures])
 
   const sesByLecture = useMemo(() => {
     const m = new Map<string, LectureSession[]>()

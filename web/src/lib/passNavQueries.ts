@@ -6,6 +6,7 @@ import type {
   BenchmarkOfficialRow,
   PassNavBundle,
   PassNavCategoryRemedy,
+  PassNavDbAlertRow,
   PassNavTargetGoalRow,
   RecentAttemptRow,
   UniversityBenchmarkRow,
@@ -22,6 +23,7 @@ import {
   fetchEbookPageNavContexts,
   fetchLectureCaptionNavContexts,
 } from './fasttrackQueries'
+import { questionsBankDrillPath } from './questionsBankNav'
 
 function safeRows<T>(res: { data: unknown; error: unknown }, fallback: T[] = []): T[] {
   if (res.error) {
@@ -29,6 +31,18 @@ function safeRows<T>(res: { data: unknown; error: unknown }, fallback: T[] = [])
     throw res.error
   }
   return (res.data ?? fallback) as T[]
+}
+
+/** 미해소 알림만, 최신순 (알림 센터) */
+export async function fetchPassNavAlertsForUser(userId: string): Promise<PassNavDbAlertRow[]> {
+  const res = await supabase
+    .from('alerts')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('resolved', false)
+    .order('created_at', { ascending: false })
+    .limit(1000)
+  return safeRows<PassNavDbAlertRow>(res, [])
 }
 
 export function normalizeUniKey(u: string, d: string): string {
@@ -185,11 +199,14 @@ async function buildRemedyFromRecentAttempt(row: RecentAttemptRow | undefined): 
     }
   }
 
-  let drillHref = '/study/mock-exam/questions-bank'
-  let drillHint = '문제 은행으로 이동'
-  if (row.source === 'bank' && row.subject_id?.trim() && row.question_id) {
-    drillHref = `/study/mock-exam/questions-bank?subject=${encodeURIComponent(row.subject_id.trim())}&question=${encodeURIComponent(row.question_id)}`
-    drillHint = '방금 풀었던 문항으로 이동'
+  let drillHref: string | null = null
+  let drillHint: string | null = null
+  if (row.source === 'bank') {
+    drillHref = questionsBankDrillPath({
+      subjectId: row.subject_id,
+      questionId: row.question_id,
+    })
+    drillHint = drillHref ? '방금 풀었던 문항으로 이동' : null
   } else if (row.source === 'catalog') {
     drillHref = '/study/mock-exam'
     drillHint = '모의고사 풀기'
@@ -300,7 +317,6 @@ async function fetchPassNavCategoryRemedies(labels: string[]): Promise<Record<st
     fetchGlobalLectureEbookSamples(),
   ])
 
-  const gen = '/study/mock-exam/questions-bank'
   const out: Record<string, PassNavCategoryRemedy> = {}
   for (const cat of uniq) {
     const refs = catToRefs.get(cat) ?? { eb: null, cap: null }
@@ -342,10 +358,13 @@ async function fetchPassNavCategoryRemedies(labels: string[]): Promise<Record<st
       ebookHint = '강의 화면에서 교재 열기'
     }
 
-    let drillHref = gen
-    let drillHint: string | null = `문제 은행 · 「${cat}」 유형`
+    let drillHref: string | null = null
+    let drillHint: string | null = null
     if (bank) {
-      drillHref = `/study/mock-exam/questions-bank?subject=${encodeURIComponent(bank.subject_id)}&question=${encodeURIComponent(bank.question_id)}`
+      drillHref = questionsBankDrillPath({
+        subjectId: bank.subject_id,
+        questionId: bank.question_id,
+      })
       drillHint = bank.preview
         ? `문제은행 · ${bank.preview}${bank.preview.length >= 72 ? '…' : ''}`
         : `문제은행 · 「${cat}」`
@@ -445,7 +464,7 @@ export async function fetchPassNavBundle(
     supabase.from('user_lecture_stats').select('*').eq('user_id', userId),
     supabase.from('user_mock_exam_stats').select('*').eq('user_id', userId),
     supabase.from('user_official_exam_stats').select('*').eq('user_id', userId),
-    supabase.from('subjects').select('id,name'),
+    supabase.from('subjects').select('id,name,category'),
     supabase.from('fasttrack_mock_exam_catalog').select('id,title,subject_id'),
     fetchRecentAttempts(userId),
   ])
@@ -469,7 +488,7 @@ export async function fetchPassNavBundle(
   const benchMasteryList = safeRows<BenchmarkMasteryRow>(bmRes, [])
   const benchMockList = safeRows<BenchmarkMockRow>(bmockRes, [])
   const userMockList = safeRows<UserMockExamStatRow>(umockRes, [])
-  const subjectsList = safeRows<{ id: string; name: string }>(subRes, [])
+  const subjectsList = safeRows<{ id: string; name: string; category: string | null }>(subRes, [])
   const catalogsList = safeRows<{ id: string; title: string; subject_id: string }>(catRes, [])
 
   const bundleForPrescription: PassNavBundle = {

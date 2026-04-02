@@ -511,3 +511,98 @@ export async function askLectureTutor(params: AskLectureTutorParams): Promise<st
     newUserMessage: question,
   })
 }
+
+const PASS_NAV_NAVIGATOR_SYSTEM = [
+  '역할: FastTrack Pass-Nav 입시 네비게이터 코치.',
+  '입력: 한 수험생의 목표·D-Day·종합지수·과목·카테고리·강의 단위 벤치 대비 수치와 이탈 경보 히스토리가 담긴 JSON이다.',
+  'JSON에 없는 사실·점수·학교명을 지어내지 말고, 수치를 언급할 때는 반드시 입력에 있는 값만 인용한다.',
+  '벤치마크가 없거나 null이 많으면 "데이터 부족"을 솔직히 짚고, 일반적인 학습 습관 제안만 짧게 한다.',
+  '',
+  '출력 형식: 아래 키만 가진 JSON 객체 하나만 출력한다. 앞뒤 설명·마크다운·코드펜스 금지.',
+  '{',
+  '  "majorStrengths": string[],',
+  '  "majorWeaknesses": string[],',
+  '  "fomoSuggestions": string[],',
+  '  "strongFomoRecommendation": string',
+  '}',
+  '',
+  '[길이 제한 — 토큰 한도로 JSON이 잘리면 클라이언트가 전체를 파싱하지 못함]',
+  '- 각 배열은 항목 **최대 4개**.',
+  '- **각 문자열은 공백 포함 90자 이내**로 끊어서 쓴다. 수치·과목명만 짧게 인용.',
+  '- JSON 문자열 **안에 실제 줄바꿈(엔터) 금지**. 문장은 한 줄로만.',
+  '- strongFomoRecommendation은 **2문장 이내**.',
+  '',
+  '톤: 한국어, 교육·입시 맥락에 맞게 짧고 날카롭되 비하·혐오 금지.',
+].join('\n')
+
+/** Pass-Nav 관제 센터: 근거 JSON만으로 주요 강·약점·FOMO 요약 (응답은 JSON 문자열) */
+export async function generatePassNavNavigatorSummaryWithGemini(params: {
+  apiKey: string
+  payload: Record<string, unknown>
+}): Promise<string> {
+  const { apiKey, payload } = params
+  if (!apiKey.trim()) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. VITE_GEMINI_API_KEY 를 확인하세요.')
+  }
+  const model = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_MODEL
+  const userBlock = [
+    '아래 JSON만 근거로 majorStrengths, majorWeaknesses, fomoSuggestions, strongFomoRecommendation 필드를 채워라.',
+    '반드시 짧은 불릿(항목당 90자 이내, 배열당 최대 4개)으로 완결된 JSON만 출력한다.',
+    '',
+    JSON.stringify(payload, null, 2),
+  ].join('\n')
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: PASS_NAV_NAVIGATOR_SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text: userBlock }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+
+  const data: unknown = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const msg =
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (data as { error?: { message?: string } }).error?.message === 'string'
+        ? (data as { error: { message: string } }).error.message
+        : `Gemini 요청 실패 (${res.status})`
+    throw new Error(msg)
+  }
+
+  const root = data as {
+    promptFeedback?: { blockReason?: string; blockReasonMessage?: string }
+    candidates?: {
+      finishReason?: string
+      content?: { parts?: { text?: string }[] }
+    }[]
+  }
+  if (root.promptFeedback?.blockReason) {
+    const m = root.promptFeedback.blockReasonMessage ?? ''
+    throw new Error(`Gemini 프롬프트 차단: ${root.promptFeedback.blockReason}${m ? ` — ${m}` : ''}`)
+  }
+  const cand = root.candidates?.[0]
+  const parts = cand?.content?.parts ?? []
+  const texts = parts.map((p) => p.text).filter((t): t is string => typeof t === 'string')
+  if (texts.length === 0) {
+    const fr = cand?.finishReason
+    throw new Error(
+      `Gemini 응답 텍스트가 비어 있습니다.${fr ? ` finishReason=${fr}` : ''} (JSON 모델·토큰 한도를 확인하세요.)`,
+    )
+  }
+  const joined = texts.join('')
+  const jsonPart = texts.find((t) => t.includes('{') && t.includes('majorStrengths')) ?? joined
+  const text = jsonPart.trim() || joined.trim()
+  return text || '{}'
+}

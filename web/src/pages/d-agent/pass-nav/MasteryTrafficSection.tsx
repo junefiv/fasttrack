@@ -15,48 +15,55 @@ const titleColor = (tone: PassNavHistoryItem['tone']) => {
 }
 
 function RemedyActions({ remedy }: { remedy: PassNavHistoryItem['remedy'] }) {
-  const videoTo = remedy?.videoHref ?? '/study/videos'
-  const ebookTo = remedy?.ebookHref ?? '/study/videos'
-  const drillTo = remedy?.drillHref ?? '/study/mock-exam/questions-bank'
+  const videoTo = remedy?.videoHref
+  const ebookTo = remedy?.ebookHref
+  const drillTo = remedy?.drillHref
+  if (!videoTo && !ebookTo && !drillTo) return null
 
   return (
     <Stack gap={6} mt="sm">
-      
       <Group gap="xs" wrap="wrap">
-        <Button
-          size="compact-xs"
-          variant="light"
-          color="cyan"
-          component={Link}
-          to={videoTo}
-        >
-          관련 강의
-        </Button>
-        <Button
-          size="compact-xs"
-          variant="light"
-          color="grape"
-          component={Link}
-          to={ebookTo}
-        >
-          관련 교재
-        </Button>
-        <Button
-          size="compact-xs"
-          variant="light"
-          color="orange"
-          component={Link}
-          to={drillTo}
-        >
-          관련 문제
-        </Button>
+        {videoTo ? (
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="cyan"
+            component={Link}
+            to={videoTo}
+          >
+            관련 강의
+          </Button>
+        ) : null}
+        {ebookTo ? (
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="grape"
+            component={Link}
+            to={ebookTo}
+          >
+            관련 교재
+          </Button>
+        ) : null}
+        {drillTo ? (
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="orange"
+            component={Link}
+            to={drillTo}
+          >
+            관련 문제
+          </Button>
+        ) : null}
       </Group>
     </Stack>
   )
 }
 
 export function MasteryTrafficSection({ items }: { items: PassNavHistoryItem[] }) {
-  const newCount = items.filter((i) => i.tone === 'danger').length
+  const total = items.length
+  const dangerCount = items.filter((i) => i.tone === 'danger').length
 
   return (
     <Paper
@@ -81,12 +88,22 @@ export function MasteryTrafficSection({ items }: { items: PassNavHistoryItem[] }
               <span aria-hidden>🔔</span>
               이탈 경보 히스토리
             </Text>
-            
+            <Text size="xs" c="dimmed" lh={1.35}>
+              현재 학습 사용자·미해소 알림만 표시합니다. 시드 데이터가 여러 user_id로 나뉘어 있으면, 이 목록은 그중 한 명분만
+              보입니다.
+            </Text>
           </Stack>
-          {newCount > 0 ? (
-            <Badge size="sm" color="red" variant="filled" style={{ flexShrink: 0 }}>
-              {newCount} New
-            </Badge>
+          {total > 0 ? (
+            <Group gap={6} wrap="wrap" justify="flex-end" style={{ flexShrink: 0 }}>
+              <Badge size="sm" color="dark" variant="light">
+                미해소 {total}건
+              </Badge>
+              {dangerCount > 0 ? (
+                <Badge size="sm" color="red" variant="filled">
+                  고위험 {dangerCount}건
+                </Badge>
+              ) : null}
+            </Group>
           ) : null}
         </Group>
       </Box>

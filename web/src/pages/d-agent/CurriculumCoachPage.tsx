@@ -1,25 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Container, Loader, Tabs, Text, Alert } from '@mantine/core'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
-import { fetchPassNavBundle } from '../../lib/passNavQueries'
+import { fetchPassNavAlertsForUser, fetchPassNavBundle } from '../../lib/passNavQueries'
 import { messageFromUnknownError } from '../../lib/unknownError'
 import {
   buildCategoryCompare,
-  buildRadarRows,
   buildPassNavSubjectMetricRows,
-  expectedPrepProgressPercent,
-  avgUserLectureCompletion,
-  isGpsPathDeviation,
   getDDay,
+  passNavSubjectBarOverallPct,
 } from '../../lib/passNavModel'
-import { buildDualRecommendationCards } from '../../lib/passNavRecommendations'
-import { buildPassNavAlertHistory, buildPassNavAlerts } from '../../lib/passNavAlerts'
+import { buildPassNavAlertHistory, mapPassNavDbAlertsToHistoryItems } from '../../lib/passNavAlerts'
 import { loadFocusSnapshot, saveFocusSnapshot } from '../../lib/passNavFocusStorage'
-import type { PassNavBundle } from '../../types/passNav'
+import type { PassNavBundle, PassNavDbAlertRow } from '../../types/passNav'
 import { PassNavCommandCenter } from './pass-nav/PassNavCommandCenter'
 import { PassNavDetailAnalysis } from './pass-nav/PassNavDetailAnalysis'
 import { PassNavAlertCenter } from './pass-nav/PassNavAlertCenter'
-import './pass-nav/pass-nav.css'
 
 export function CurriculumCoachPage() {
   const userId = useMemo(() => getFasttrackUserId(), [])
@@ -28,6 +23,7 @@ export function CurriculumCoachPage() {
   const [navBusy, setNavBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bundle, setBundle] = useState<PassNavBundle | null>(null)
+  const [dbAlerts, setDbAlerts] = useState<PassNavDbAlertRow[]>([])
   const [activeGoalPriority, setActiveGoalPriority] = useState(1)
 
   const load = useCallback(async () => {
@@ -36,11 +32,17 @@ export function CurriculumCoachPage() {
     else setNavBusy(true)
     setError(null)
     try {
-      const b = await fetchPassNavBundle(userId, { activePriority: activeGoalPriority })
-      setBundle(b)
+      const [bundleResult, alertsResult] = await Promise.allSettled([
+        fetchPassNavBundle(userId, { activePriority: activeGoalPriority }),
+        fetchPassNavAlertsForUser(userId),
+      ])
+      if (bundleResult.status === 'rejected') throw bundleResult.reason
+      setBundle(bundleResult.value)
+      setDbAlerts(alertsResult.status === 'fulfilled' ? alertsResult.value : [])
     } catch (e) {
       setError(messageFromUnknownError(e))
       setBundle(null)
+      setDbAlerts([])
     } finally {
       setLoading(false)
       setNavBusy(false)
@@ -65,32 +67,22 @@ export function CurriculumCoachPage() {
   const derived = useMemo(() => {
     if (!bundle) return null
     const dDay = getDDay()
-    const expectedProgress = expectedPrepProgressPercent(dDay)
-    const userProgress = avgUserLectureCompletion(bundle)
-    const gpsDeviated = isGpsPathDeviation(bundle, dDay)
     const compares = buildCategoryCompare(bundle)
-    const radar = buildRadarRows(bundle)
     const subjectMetricRows = buildPassNavSubjectMetricRows(bundle)
-    const dual = buildDualRecommendationCards(bundle)
-    const overallPct =
-      radar.length > 0 ? radar.reduce((s, r) => s + r.user, 0) / radar.length : 0
+    const overallPct = passNavSubjectBarOverallPct(subjectMetricRows)
     const prevFocus = loadFocusSnapshot()
-    const alerts = buildPassNavAlerts(bundle, prevFocus)
-    const alertHistory = buildPassNavAlertHistory(bundle, prevFocus)
+    const alertHistory =
+      dbAlerts.length > 0
+        ? mapPassNavDbAlertsToHistoryItems(bundle, dbAlerts)
+        : buildPassNavAlertHistory(bundle, prevFocus)
     return {
       dDay,
-      expectedProgress,
-      userProgress,
-      gpsDeviated,
       compares,
-      radar,
       subjectMetricRows,
-      dual,
       overallPct,
-      alerts,
       alertHistory,
     }
-  }, [bundle])
+  }, [bundle, dbAlerts])
 
   useEffect(() => {
     if (!bundle) return
@@ -144,10 +136,6 @@ export function CurriculumCoachPage() {
             alertHistory={derived.alertHistory}
             subjectMetricRows={derived.subjectMetricRows}
             dDay={derived.dDay}
-            expectedProgress={derived.expectedProgress}
-            userProgress={derived.userProgress}
-            gpsDeviated={derived.gpsDeviated}
-            dual={derived.dual}
             overallPct={derived.overallPct}
           />
         </Tabs.Panel>
@@ -155,7 +143,7 @@ export function CurriculumCoachPage() {
           <PassNavDetailAnalysis bundle={bundle} />
         </Tabs.Panel>
         <Tabs.Panel value="alerts" pt="lg">
-          <PassNavAlertCenter alerts={derived.alerts} />
+          <PassNavAlertCenter rows={dbAlerts} />
         </Tabs.Panel>
       </Tabs>
     </Container>
