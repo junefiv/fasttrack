@@ -8,6 +8,7 @@ import { renderExamRichText } from '../../lib/richExamText'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
 import {
   fetchQuestionsBankCountForSubject,
+  fetchQuestionsBankQuestionById,
   fetchQuestionsBankStatsForQuestion,
   fetchSubjects,
   insertQuestionsBankResult,
@@ -110,6 +111,7 @@ async function pickNextQuestion(
 export function QuestionsBankDrillPage() {
   const [searchParams] = useSearchParams()
   const subjectId = searchParams.get('subject')?.trim() ?? ''
+  const deepLinkQuestionId = searchParams.get('question')?.trim() ?? ''
   const userId = getFasttrackUserId()
 
   const [subjects, setSubjects] = useState<SubjectRow[]>([])
@@ -234,8 +236,51 @@ export function QuestionsBankDrillPage() {
     setDrillRound(0)
     setRetryNotBefore({})
     setExcludeIds([])
+    if (deepLinkQuestionId) {
+      let cancelled = false
+      void (async () => {
+        setPhase('loading')
+        setErr(null)
+        try {
+          const row = await fetchQuestionsBankQuestionById(deepLinkQuestionId)
+          if (cancelled) return
+          if (!row) {
+            setErr('해당 문항을 찾을 수 없습니다.')
+            setBankRow(null)
+            setSheet(null)
+            return
+          }
+          if (row.subject_id !== subjectId) {
+            setErr('URL의 과목(subject)과 문항의 과목이 일치하지 않습니다.')
+            setBankRow(null)
+            setSheet(null)
+            return
+          }
+          setBankRow(row)
+          setSheet(mapBankToSheet(row))
+          setAnswer('')
+          setFlagged(false)
+          setLastSubmit(null)
+          setQuestionStartedAt(Date.now())
+          setElapsedSec(0)
+          setPhase('answering')
+          setDrillRound(1)
+          const s = await fetchQuestionsBankStatsForQuestion(row.question_id)
+          if (!cancelled) setStats(s)
+        } catch (e) {
+          if (!cancelled) {
+            setErr(messageFromUnknownError(e) || '문항을 불러오지 못했습니다.')
+            setBankRow(null)
+            setSheet(null)
+          }
+        }
+      })()
+      return () => {
+        cancelled = true
+      }
+    }
     void loadQuestion([], [], [], {}, 0)
-  }, [subjectId, loadQuestion])
+  }, [subjectId, deepLinkQuestionId, loadQuestion])
 
   useEffect(() => {
     if (phase !== 'answering') return

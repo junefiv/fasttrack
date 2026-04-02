@@ -1373,6 +1373,18 @@ async function fetchQuestionsBankRowsForSubject(subjectId: string): Promise<Ques
   return (data ?? []) as QuestionsBankRow[]
 }
 
+/** Pass-Nav·딥링크: 단일 문항 로드 */
+export async function fetchQuestionsBankQuestionById(questionId: string): Promise<QuestionsBankRow | null> {
+  const id = questionId.trim()
+  if (!id) return null
+  const { data, error } = await supabase.from('questions_bank').select(QUESTIONS_BANK_SELECT).eq('question_id', id).maybeSingle()
+  if (error) {
+    if (isSupabaseMissingRelationError(error)) return null
+    throw error
+  }
+  return (data ?? null) as QuestionsBankRow | null
+}
+
 const questionsBankRowsCache = new Map<string, { fetchedAt: number; rows: QuestionsBankRow[] }>()
 const QUESTIONS_BANK_ROWS_CACHE_MS = 25_000
 
