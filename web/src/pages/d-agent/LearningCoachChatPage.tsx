@@ -226,7 +226,7 @@ export function LearningCoachChatPage() {
     <div>
       {!apiKey ? (
         <p className="learning-coach__key-hint" role="alert">
-          Gemini API 키가 없습니다. 웹 앱 루트의 <code>.env</code>에{' '}
+          Gem1ini API 키가 없습니다. 웹 앱 루트의 <code>.env</code>에{' '}
           <code>VITE_GEMINI_API_KEY</code>를 넣고 개발 서버를 다시 시작하세요.
         </p>
       ) : null}
