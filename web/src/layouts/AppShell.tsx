@@ -48,7 +48,7 @@ export function AppShell() {
             onClick={closeMobileNav}
           >
             <span className="app-shell__side-icon" aria-hidden />
-            메인 대시보드
+            HOME
           </NavLink>
 
           <SidebarAccordionSection title="STUDY ROOM" pathPrefix="/study" currentPath={pathname}>

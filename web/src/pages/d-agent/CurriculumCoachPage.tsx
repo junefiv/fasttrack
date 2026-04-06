@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Container, Loader, Text, Alert, Modal, Stack } from '@mantine/core'
+import { Container, Text, Alert } from '@mantine/core'
+import { PassNavDataLoadingModal } from '../../components/PassNavDataLoadingModal'
+import { usePassNavPrescriptionBullets } from '../../hooks/usePassNavPrescriptionBullets'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
 import { fetchPassNavAlertsForUser, fetchPassNavBundle } from '../../lib/passNavQueries'
 import { messageFromUnknownError } from '../../lib/unknownError'
@@ -93,24 +95,17 @@ export function CurriculumCoachPage() {
     saveFocusSnapshot(snap)
   }, [bundle])
 
+  const { prescriptionLoading, prescriptionError, prescriptionBullets } = usePassNavPrescriptionBullets({
+    bundle,
+    dbAlerts,
+  })
+
+  const blockingModalOpen =
+    loading || (Boolean(bundle) && Boolean(derived) && prescriptionLoading)
+
   return (
     <>
-      <Modal
-        opened={loading}
-        onClose={() => {}}
-        withCloseButton={false}
-        closeOnClickOutside={false}
-        closeOnEscape={false}
-        centered
-        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
-      >
-        <Stack align="center" gap="md" py="sm">
-          <Loader />
-          <Text ta="center" size="sm">
-            학생의 목표를 이룬 선배들의 학습 데이터를 가져오는 중입니다.
-          </Text>
-        </Stack>
-      </Modal>
+      <PassNavDataLoadingModal opened={blockingModalOpen} />
 
       {!loading && error ? (
         <Container size="xl" py="xl">
@@ -134,9 +129,13 @@ export function CurriculumCoachPage() {
             onSelectGoalPriority={setActiveGoalPriority}
             busy={navBusy}
             alertHistory={derived.alertHistory}
+            dbAlerts={dbAlerts}
             subjectMetricRows={derived.subjectMetricRows}
             dDay={derived.dDay}
             overallPct={derived.overallPct}
+            prescriptionLoading={prescriptionLoading}
+            prescriptionError={prescriptionError}
+            prescriptionBullets={prescriptionBullets}
           />
         </Container>
       ) : null}

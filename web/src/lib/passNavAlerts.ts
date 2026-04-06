@@ -626,6 +626,21 @@ export function filterPassNavDbAlertsForActiveBenchmark(
   })
 }
 
+/**
+ * 처방 큐 전용: `bundle.benchmarkId`와 `public.alerts.benchmark_id`가 일치하는 행만 골라 `body`를 합친 문자열(최신순).
+ * 번들에 벤치마크가 없으면 빈 문자열.
+ */
+export function aggregateAlertBodiesForBenchmark(bundle: PassNavBundle, rows: PassNavDbAlertRow[]): string {
+  const bid = bundle.benchmarkId
+  if (!bid) return ''
+  return rows
+    .filter((r) => r.benchmark_id === bid)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .map((r) => r.body.trim())
+    .filter(Boolean)
+    .join('\n---\n')
+}
+
 /** 관제 센터 `이탈 경보 히스토리` — `public.alerts` 행을 스레드 카드 형식으로 변환 */
 export function mapPassNavDbAlertsToHistoryItems(
   bundle: PassNavBundle,

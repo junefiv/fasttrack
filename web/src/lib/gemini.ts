@@ -609,34 +609,130 @@ export async function generatePassNavNavigatorSummaryWithGemini(params: {
 }
 
 const PASS_NAV_PRESCRIPTION_SYSTEM = [
-  '역할: FastTrack Pass-Nav 학습 처방 코치.',
-  '입력: (1) 이탈 경보 알림 본문(body) 문자열 목록 — public.alerts와 동일한 문맥.',
-  '입력: (2) 목표 대학 합격군(benchmark_lecture_stats)은 높은 수강률인데, 나(user_lecture_stats)는 아직 낮은 강좌 목록(강의명·과목·합격군 수강률·나의 수강률).',
-  '제시된 텍스트·숫자 밖의 사실을 지어내지 말 것.',
-  '출력: JSON 객체 하나만. 키 "bullets" — 짧은 학습 경로·방법·해야 할 일을 글머리기호용 문장으로 담은 문자열 배열.',
+  '역할: FastTrack Pass-Nav 학습 코치.',
+  '입력은 alertBodiesCorpus 한 필드뿐이다. 다른 추정·외부 지식 금지.',
+  '· alertBodiesCorpus — public.alerts 에서 현재 사용자·선택된 벤치(benchmark_id)에 해당하는 미해소 알림 행들의 body만 합친 텍스트.',
+  '이 본문만으로 학생 상태를 진단하고, 실행 가능한 처방을 bullets로 제시한다. 알림 문장을 그대로 반복하지 말고 요약·통합한다.',
+  '앞쪽 항목은 진단 요약, 뒤쪽은 구체적 실행(우선순위). 제시된 텍스트 밖의 사실을 지어내지 말 것.',
+  '출력: JSON 객체 하나만. 반드시 키 이름은 정확히 "bullets" (문자열 배열).',
   '한국어. 항목 최대 8개, 각 항목 공백 포함 140자 이내. 앞뒤 설명·마크다운 코드펜스 금지.',
 ].join('\n')
 
-export function parsePassNavPrescriptionBulletsJson(raw: string): string[] {
-  const t = raw.trim()
-  if (!t) return []
-  try {
-    const parsed = JSON.parse(t) as { bullets?: unknown }
-    if (!Array.isArray(parsed.bullets)) return []
-    return parsed.bullets
-      .map((x) =>
-        String(x)
-          .replace(/^\s*[•\-*]\s*/, '')
-          .trim(),
-      )
-      .filter(Boolean)
-      .slice(0, 8)
-  } catch {
-    return []
+function normalizePrescriptionJsonText(raw: string): string {
+  let t = raw.trim()
+  if (!t) return ''
+  if (t.startsWith('```')) {
+    t = t.replace(/^```(?:json)?\s*/i, '')
+    t = t.replace(/\s*```[\s\n]*$/s, '')
   }
+  return t.trim()
 }
 
-/** Pass-Nav 처방 큐: 이탈 경보 본문 + 벤치 대비 미수강 강좌 근거로 불릿 처방 (JSON) */
+function normalizeBulletLines(arr: unknown[]): string[] {
+  return arr
+    .map((x) =>
+      String(x)
+        .replace(/^\s*[•\-*]\s*/, '')
+        .trim(),
+    )
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+/** 객체 안에서 문자열(또는 혼합) 배열 후보를 깊이 제한 탐색 */
+function findBulletsArrayInObject(obj: unknown, depth = 0): unknown[] | null {
+  if (depth > 5 || obj == null) return null
+  if (Array.isArray(obj)) {
+    return obj.length > 0 ? obj : null
+  }
+  if (typeof obj !== 'object') return null
+  const rec = obj as Record<string, unknown>
+  for (const key of ['bullets', 'items', 'recommendations', 'steps', 'actions', 'prescriptions']) {
+    const v = rec[key]
+    if (Array.isArray(v) && v.length > 0) return v
+  }
+  for (const v of Object.values(rec)) {
+    const found = findBulletsArrayInObject(v, depth + 1)
+    if (found?.length) return found
+  }
+  return null
+}
+
+function extractBulletsFromParsed(parsed: unknown): string[] | null {
+  if (Array.isArray(parsed)) {
+    return normalizeBulletLines(parsed)
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const o = parsed as Record<string, unknown>
+
+  if (typeof o.bullets === 'string') {
+    const lines = o.bullets
+      .split(/\n+/)
+      .map((x) => x.replace(/^\s*[•\-*]\s*/, '').trim())
+      .filter(Boolean)
+    return lines.length > 0 ? lines.slice(0, 8) : null
+  }
+
+  if (Array.isArray(o.bullets)) {
+    return normalizeBulletLines(o.bullets)
+  }
+
+  const nested = findBulletsArrayInObject(o)
+  if (nested?.length) return normalizeBulletLines(nested)
+
+  let arr: unknown[] | null = null
+  if (Array.isArray(o.items)) arr = o.items
+  else if (Array.isArray(o.recommendations)) arr = o.recommendations
+  if (arr?.length) return normalizeBulletLines(arr)
+
+  return null
+}
+
+export function parsePassNavPrescriptionBulletsJson(raw: string): string[] {
+  const t = normalizePrescriptionJsonText(raw)
+  if (!t) return []
+
+  const tryParse = (text: string): string[] | null => {
+    try {
+      const parsed = JSON.parse(text) as unknown
+      return extractBulletsFromParsed(parsed)
+    } catch {
+      return null
+    }
+  }
+
+  const direct = tryParse(t)
+  if (direct !== null) return direct
+
+  const start = t.indexOf('{')
+  const end = t.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    const sliced = tryParse(t.slice(start, end + 1))
+    if (sliced !== null) return sliced
+  }
+
+  const bulletsMatch = t.match(/"bullets"\s*:\s*\[([\s\S]*?)\]/m)
+  if (bulletsMatch?.[1]) {
+    try {
+      const inner = `[${bulletsMatch[1]}]`
+      const arr = JSON.parse(inner) as unknown[]
+      if (Array.isArray(arr)) return normalizeBulletLines(arr)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const lb = t.indexOf('[')
+  const rb = t.lastIndexOf(']')
+  if (lb >= 0 && rb > lb) {
+    const fromBrackets = tryParse(t.slice(lb, rb + 1))
+    if (fromBrackets !== null) return fromBrackets
+  }
+
+  return []
+}
+
+/** Pass-Nav 처방 큐: 벤치 일치 알림 body 합본만으로 진단·처방 bullets (JSON) */
 export async function generatePassNavPrescriptionBulletsWithGemini(params: {
   apiKey: string
   payload: Record<string, unknown>
@@ -647,7 +743,7 @@ export async function generatePassNavPrescriptionBulletsWithGemini(params: {
   }
   const model = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_MODEL
   const userBlock = [
-    '아래 JSON만 근거로 bullets 배열을 채워라. 학습 순서·복습·강좌 우선순위·문제 풀이 습관 등 실행 가능한 처방만.',
+    '입력은 alertBodiesCorpus(벤치 일치 알림 body 합침) 한 필드뿐이다. 이것만 근거로 bullets 배열을 채워라.',
     '',
     JSON.stringify(payload, null, 2),
   ].join('\n')

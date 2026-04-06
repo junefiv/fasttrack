@@ -53,7 +53,7 @@ function RemedyActions({ remedy }: { remedy: PassNavHistoryItem['remedy'] }) {
             component={Link}
             to={drillTo}
           >
-            관련 문제
+            관련 문항
           </Button>
         ) : null}
       </Group>

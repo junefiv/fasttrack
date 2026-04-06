@@ -1,3 +1,4 @@
+import { getDDay, passNavSubjectBarOverallPct } from './passNavModel'
 import type { PassNavBundle, PassNavSubjectMetricRow } from '../types/passNav'
 
 export type PassNavStudyTrendMetricKey = 'study' | 'problems' | 'avgSec'
@@ -487,6 +488,29 @@ export function buildPassNavStudyTrendForReport(
       '벤치마크 미연결·과목 미매칭 시 cohort 평균은 chartDemoUi의 과목별 벤치를 일평균한 값으로 보완됨.',
     ],
   }
+}
+
+/**
+ * 처방 큐(Gemini): 목표·D-Day·종합% + `buildPassNavStudyTrendTextBody` (차트와 동일 출처).
+ * `alertBodiesCorpus` 와 교차해 종합 진단·처방에 쓴다.
+ */
+export function buildPassNavPrescriptionLearningContext(
+  bundle: PassNavBundle,
+  subjectMetricRows: PassNavSubjectMetricRow[],
+): string {
+  const dDay = getDDay()
+  const overallPct = passNavSubjectBarOverallPct(subjectMetricRows)
+  const g = bundle.primaryGoal
+  const goalLine = g ? `${g.university_name} ${g.department_name}` : '목표 미설정'
+  const meta = [
+    '【목표·스냅샷】',
+    `지망: ${goalLine}`,
+    `D-Day: ${dDay}`,
+    `종합 진척도(바): ${overallPct.toFixed(0)}%`,
+    `벤치마크 연결: ${bundle.benchmarkId ? '예' : '아니오'}`,
+    '',
+  ].join('\n')
+  return `${meta}${buildPassNavStudyTrendTextBody(bundle, subjectMetricRows)}`
 }
 
 /** 텍스트 리포트 섹션용 요약 */

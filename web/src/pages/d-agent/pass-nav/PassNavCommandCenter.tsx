@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  Accordion,
   Alert,
   Badge,
   Box,
@@ -18,15 +19,10 @@ import {
   Title,
 } from '@mantine/core'
 import { supabase } from '../../../lib/supabase'
-import {
-  generatePassNavNavigatorSummaryWithGemini,
-  generatePassNavPrescriptionBulletsWithGemini,
-  parsePassNavPrescriptionBulletsJson,
-} from '../../../lib/gemini'
-import { buildPassNavBenchmarkLectureGaps } from '../../../lib/passNavModel'
+import { generatePassNavNavigatorSummaryWithGemini } from '../../../lib/gemini'
 import { messageFromUnknownError } from '../../../lib/unknownError'
 import type { PassNavHistoryItem } from '../../../lib/passNavAlerts'
-import type { PassNavBundle, PassNavSubjectMetricRow } from '../../../types/passNav'
+import type { PassNavBundle, PassNavDbAlertRow, PassNavSubjectMetricRow } from '../../../types/passNav'
 import {
   buildPassNavNavigatorGeminiPayload,
   buildPassNavNavigatorReportPlainText,
@@ -43,9 +39,14 @@ type Props = {
   onSelectGoalPriority: (priority: number) => void
   busy?: boolean
   alertHistory: PassNavHistoryItem[]
+  /** 처방 큐: `public.alerts` (user_id는 상위에서 조회됨) — 현재 벤치 `benchmark_id` 일치 행만 사용 */
+  dbAlerts: PassNavDbAlertRow[]
   subjectMetricRows: PassNavSubjectMetricRow[]
   dDay: number
   overallPct: number
+  prescriptionLoading: boolean
+  prescriptionError: string | null
+  prescriptionBullets: string[]
 }
 
 export function PassNavCommandCenter({
@@ -54,9 +55,13 @@ export function PassNavCommandCenter({
   onSelectGoalPriority,
   busy = false,
   alertHistory,
+  dbAlerts,
   subjectMetricRows,
   dDay,
   overallPct,
+  prescriptionLoading,
+  prescriptionError,
+  prescriptionBullets,
 }: Props) {
   const g = bundle.primaryGoal
   const goalChoices = [...bundle.goals].sort((a, b) => a.priority - b.priority)
@@ -70,13 +75,18 @@ export function PassNavCommandCenter({
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportAiSections, setReportAiSections] = useState<PassNavNavigatorReportSection[] | null>(null)
-  const [prescriptionLoading, setPrescriptionLoading] = useState(false)
-  const [prescriptionError, setPrescriptionError] = useState<string | null>(null)
-  const [prescriptionBullets, setPrescriptionBullets] = useState<string[]>([])
-
   const goalLabel = g
     ? `${activeGoalPriority}지망 ${g.university_name} ${g.department_name}`
     : '목표 미설정'
+
+  /** 처방·표시 공통: 선택 지망 번들의 benchmark_id 와 `alerts.benchmark_id` 가 같은 행만 (body 만 Gemini 입력) */
+  const prescriptionRowsForBench = useMemo(() => {
+    const bid = bundle.benchmarkId
+    if (!bid) return []
+    return dbAlerts
+      .filter((r) => r.benchmark_id === bid)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [bundle.benchmarkId, dbAlerts])
 
   const startNavigatorReport = () => {
     setReportOpen(true)
@@ -149,56 +159,6 @@ export function PassNavCommandCenter({
       cancelled = true
     }
   }, [bundle.benchmarkId, g?.university_name, g?.department_name])
-
-  useEffect(() => {
-    let cancelled = false
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? ''
-    const bodies = alertHistory.map((h) => h.body).filter((b) => b.trim().length > 0)
-    const gaps = buildPassNavBenchmarkLectureGaps(bundle)
-
-    if (!apiKey) {
-      setPrescriptionLoading(false)
-      setPrescriptionError(null)
-      setPrescriptionBullets([])
-      return
-    }
-    if (bodies.length === 0 && gaps.length === 0) {
-      setPrescriptionLoading(false)
-      setPrescriptionError(null)
-      setPrescriptionBullets([])
-      return
-    }
-
-    setPrescriptionLoading(true)
-    setPrescriptionError(null)
-    void (async () => {
-      try {
-        const payload = {
-          goalLabel,
-          alertBodies: bodies.slice(0, 40),
-          lectureGapsBehindBenchmark: gaps.slice(0, 20).map((x) => ({
-            lectureTitle: x.lectureTitle,
-            subject: x.subjectLabel,
-            benchmarkCohortCompletionPct: x.benchCompletionPct,
-            myCompletionPct: x.userCompletionPct,
-          })),
-        }
-        const raw = await generatePassNavPrescriptionBulletsWithGemini({ apiKey, payload })
-        if (cancelled) return
-        setPrescriptionBullets(parsePassNavPrescriptionBulletsJson(raw))
-      } catch (e) {
-        if (cancelled) return
-        setPrescriptionError(messageFromUnknownError(e))
-        setPrescriptionBullets([])
-      } finally {
-        if (!cancelled) setPrescriptionLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [bundle, alertHistory, goalLabel])
 
   return (
     <Box pos="relative" mih={200}>
@@ -361,7 +321,9 @@ export function PassNavCommandCenter({
             <Text size="sm" fw={600}>
               처방 큐
             </Text>
-            
+            <Text size="xs" c="dimmed" mt={4}>
+              public.alerts 중 현재 벤치(benchmark_id)와 일치하는 미해소 알림의 본문만 입력으로, 진단 후 처방합니다.
+            </Text>
           </div>
           {!import.meta.env.VITE_GEMINI_API_KEY?.trim() ? (
             <Text size="sm" c="dimmed">
@@ -372,7 +334,7 @@ export function PassNavCommandCenter({
             <Group gap="xs">
               <Loader size="sm" />
               <Text size="sm" c="dimmed">
-                처방 생성 중…
+                알림 본문을 바탕으로 진단·처방을 생성하는 중…
               </Text>
             </Group>
           ) : null}
@@ -393,9 +355,48 @@ export function PassNavCommandCenter({
           prescriptionBullets.length === 0 &&
           import.meta.env.VITE_GEMINI_API_KEY?.trim() ? (
             <Text size="sm" c="dimmed">
-              이탈 경보 본문·강좌 격차 데이터가 없거나 응답이 비었습니다.
+              {!bundle.benchmarkId
+                ? '목표에 연결된 벤치마크가 없어 알림을 벤치별로 묶을 수 없습니다.'
+                : prescriptionRowsForBench.length === 0
+                  ? '이 벤치에 해당하는 미해소 알림이 없습니다.'
+                  : 'AI 응답이 비었습니다. 잠시 후 다시 시도해 주세요.'}
             </Text>
           ) : null}
+          <Accordion variant="contained" radius="md">
+            <Accordion.Item value="evidence">
+              <Accordion.Control>
+                <Text size="sm" fw={500}>
+                  처방 입력으로 사용한 알림 원문 ({prescriptionRowsForBench.length}건, 벤치 일치)
+                </Text>
+              </Accordion.Control>
+              <Accordion.Panel>
+                {!bundle.benchmarkId ? (
+                  <Text size="sm" c="yellow">
+                    벤치마크가 연결되지 않아 알림을 벤치별로 묶을 수 없습니다.
+                  </Text>
+                ) : prescriptionRowsForBench.length > 0 ? (
+                  <ScrollArea.Autosize mah={240} offsetScrollbars>
+                    <Stack gap="xs" pr="sm">
+                      {prescriptionRowsForBench.map((row) => (
+                        <Paper key={row.id} withBorder p="xs" radius="sm" variant="light">
+                          <Text size="xs" c="dimmed" mb={4}>
+                            {row.title}
+                          </Text>
+                          <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                            {row.body}
+                          </Text>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  </ScrollArea.Autosize>
+                ) : (
+                  <Text size="sm" c="dimmed">
+                    이 벤치에 해당하는 미해소 알림이 없습니다.
+                  </Text>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
         </Stack>
       </Paper>
     </Stack>
