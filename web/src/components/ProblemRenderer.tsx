@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ChoiceOption } from '../types/fasttrack'
 import { renderExamRichText } from '../lib/richExamText'
 import { ReadingBodyDiagrams } from './ReadingBodyDiagrams'
@@ -58,6 +59,8 @@ type Props = {
   disabled?: boolean
   showCorrect?: boolean
   correctAnswer?: string
+  /** 객관식 선택지가 없을 때(단답·서술 등) 부모가 직접 답 입력 UI를 넣을 때 사용 */
+  noChoicesContent?: ReactNode
 }
 
 function formatDifficulty(d: string | null | undefined): string | null {
@@ -89,6 +92,7 @@ export function ProblemRenderer({
   disabled,
   showCorrect,
   correctAnswer,
+  noChoicesContent,
 }: Props) {
   const opts = parseChoices(choices)
   const hasReadingText = Boolean(readingBody?.trim())
@@ -190,6 +194,8 @@ export function ProblemRenderer({
             )
           })}
         </ul>
+      ) : noChoicesContent != null ? (
+        noChoicesContent
       ) : (
         <p className="problem-renderer__nochoices">객관식 선택지가 없습니다.</p>
       )}

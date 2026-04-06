@@ -193,16 +193,6 @@ export function SolveSpeedBarSection({
     userConsecutiveDays: avgUserStreak,
   })
 
-  const nBenchSp = sorted.filter((r) => r.benchSec != null && !Number.isNaN(r.benchSec)).length
-  const nUserSp = sorted.filter((r) => r.userSec != null && !Number.isNaN(r.userSec)).length
-  const nBenchLec = sorted.filter((r) => r.benchCompletionPct != null && !Number.isNaN(r.benchCompletionPct)).length
-  const nUserLec = sorted.filter((r) => r.userCompletionPct != null && !Number.isNaN(r.userCompletionPct)).length
-  const nBenchAcc = sorted.filter((r) => r.benchAccuracyPct != null && !Number.isNaN(r.benchAccuracyPct)).length
-  const nUserAcc = sorted.filter((r) => r.userAccuracyPct != null && !Number.isNaN(r.userAccuracyPct)).length
-  const nBenchStreak = sorted.filter((r) => r.benchConsecutiveDays != null && !Number.isNaN(r.benchConsecutiveDays))
-    .length
-  const nUserStreak = sorted.filter((r) => r.userConsecutiveDays != null && !Number.isNaN(r.userConsecutiveDays)).length
-
   const subjectRow =
     selectedSubjectTab === '__avg' ? null : sorted.find((x) => x.subjectId === selectedSubjectTab)
 
@@ -307,11 +297,7 @@ export function SolveSpeedBarSection({
       ) : null}
       {selectedSubjectTab === '__avg' ? (
         <>
-          <Text size="xs" c="dimmed" mb="xs">
-            과목 {sorted.length}개 기준 산술평균 — 풀이 속도: 벤치 n={nBenchSp}, 나 n={nUserSp} / 수강률: 벤치 n=
-            {nBenchLec}, 나 n={nUserLec} / 정답률: 벤치 n={nBenchAcc}, 나 n={nUserAcc} / 연속 학습일: 벤치 n=
-            {nBenchStreak}, 나 n={nUserStreak}.
-          </Text>
+          
           {chart(avgData)}
         </>
       ) : !subjectRow ? (

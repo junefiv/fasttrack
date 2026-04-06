@@ -5,6 +5,8 @@ import {
   Box,
   Button,
   Group,
+  List,
+  Loader,
   LoadingOverlay,
   Modal,
   Paper,
@@ -16,8 +18,12 @@ import {
   Title,
 } from '@mantine/core'
 import { supabase } from '../../../lib/supabase'
-import { generatePassNavNavigatorSummaryWithGemini } from '../../../lib/gemini'
-import { questionsBankDrillPath } from '../../../lib/questionsBankNav'
+import {
+  generatePassNavNavigatorSummaryWithGemini,
+  generatePassNavPrescriptionBulletsWithGemini,
+  parsePassNavPrescriptionBulletsJson,
+} from '../../../lib/gemini'
+import { buildPassNavBenchmarkLectureGaps } from '../../../lib/passNavModel'
 import { messageFromUnknownError } from '../../../lib/unknownError'
 import type { PassNavHistoryItem } from '../../../lib/passNavAlerts'
 import type { PassNavBundle, PassNavSubjectMetricRow } from '../../../types/passNav'
@@ -64,6 +70,9 @@ export function PassNavCommandCenter({
   const [reportLoading, setReportLoading] = useState(false)
   const [reportError, setReportError] = useState<string | null>(null)
   const [reportAiSections, setReportAiSections] = useState<PassNavNavigatorReportSection[] | null>(null)
+  const [prescriptionLoading, setPrescriptionLoading] = useState(false)
+  const [prescriptionError, setPrescriptionError] = useState<string | null>(null)
+  const [prescriptionBullets, setPrescriptionBullets] = useState<string[]>([])
 
   const goalLabel = g
     ? `${activeGoalPriority}지망 ${g.university_name} ${g.department_name}`
@@ -140,6 +149,56 @@ export function PassNavCommandCenter({
       cancelled = true
     }
   }, [bundle.benchmarkId, g?.university_name, g?.department_name])
+
+  useEffect(() => {
+    let cancelled = false
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim() ?? ''
+    const bodies = alertHistory.map((h) => h.body).filter((b) => b.trim().length > 0)
+    const gaps = buildPassNavBenchmarkLectureGaps(bundle)
+
+    if (!apiKey) {
+      setPrescriptionLoading(false)
+      setPrescriptionError(null)
+      setPrescriptionBullets([])
+      return
+    }
+    if (bodies.length === 0 && gaps.length === 0) {
+      setPrescriptionLoading(false)
+      setPrescriptionError(null)
+      setPrescriptionBullets([])
+      return
+    }
+
+    setPrescriptionLoading(true)
+    setPrescriptionError(null)
+    void (async () => {
+      try {
+        const payload = {
+          goalLabel,
+          alertBodies: bodies.slice(0, 40),
+          lectureGapsBehindBenchmark: gaps.slice(0, 20).map((x) => ({
+            lectureTitle: x.lectureTitle,
+            subject: x.subjectLabel,
+            benchmarkCohortCompletionPct: x.benchCompletionPct,
+            myCompletionPct: x.userCompletionPct,
+          })),
+        }
+        const raw = await generatePassNavPrescriptionBulletsWithGemini({ apiKey, payload })
+        if (cancelled) return
+        setPrescriptionBullets(parsePassNavPrescriptionBulletsJson(raw))
+      } catch (e) {
+        if (cancelled) return
+        setPrescriptionError(messageFromUnknownError(e))
+        setPrescriptionBullets([])
+      } finally {
+        if (!cancelled) setPrescriptionLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [bundle, alertHistory, goalLabel])
 
   return (
     <Box pos="relative" mih={200}>
@@ -297,32 +356,47 @@ export function PassNavCommandCenter({
       </Paper>
 
       <Paper withBorder p="md" radius="md">
-        <Text size="sm" fw={600} mb="xs">
-          처방 큐 (questions_bank · 취약 category)
-        </Text>
-        {bundle.bankQuestionsForWeakTags.length === 0 ? (
-          <Text size="sm" c="dimmed">
-            추천 문항 없음 (마스터리/카테고리 데이터 확인)
-          </Text>
-        ) : (
-          <Text size="sm" component="div">
-            {bundle.bankQuestionsForWeakTags.slice(0, 5).map((q) => (
-              <div key={q.question_id}>
-                · {q.category_label ?? '—'} —{' '}
-                <a
-                  href={
-                    questionsBankDrillPath({
-                      subjectId: q.subject_id,
-                      questionId: q.question_id,
-                    }) ?? '/study/mock-exam'
-                  }
-                >
-                  문제 은행에서 풀이
-                </a>
-              </div>
-            ))}
-          </Text>
-        )}
+        <Stack gap="sm">
+          <div>
+            <Text size="sm" fw={600}>
+              처방 큐
+            </Text>
+            
+          </div>
+          {!import.meta.env.VITE_GEMINI_API_KEY?.trim() ? (
+            <Text size="sm" c="dimmed">
+              VITE_GEMINI_API_KEY 가 없어 AI 처방을 건너뜁니다. web/.env.local 에 키를 넣고 개발 서버를 다시 시작하세요.
+            </Text>
+          ) : null}
+          {prescriptionLoading ? (
+            <Group gap="xs">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">
+                처방 생성 중…
+              </Text>
+            </Group>
+          ) : null}
+          {prescriptionError ? (
+            <Alert color="red" title="처방 생성 오류">
+              {prescriptionError}
+            </Alert>
+          ) : null}
+          {prescriptionBullets.length > 0 ? (
+            <List size="sm" spacing="xs" icon="•">
+              {prescriptionBullets.map((line, i) => (
+                <List.Item key={`${i}-${line.slice(0, 24)}`}>{line}</List.Item>
+              ))}
+            </List>
+          ) : null}
+          {!prescriptionLoading &&
+          !prescriptionError &&
+          prescriptionBullets.length === 0 &&
+          import.meta.env.VITE_GEMINI_API_KEY?.trim() ? (
+            <Text size="sm" c="dimmed">
+              이탈 경보 본문·강좌 격차 데이터가 없거나 응답이 비었습니다.
+            </Text>
+          ) : null}
+        </Stack>
       </Paper>
     </Stack>
     </Box>

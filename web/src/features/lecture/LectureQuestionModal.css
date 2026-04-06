@@ -135,8 +135,8 @@
 }
 
 .qchat-tabs {
-  flex: 0 0 min(11rem, 32vw);
-  max-width: 13rem;
+  flex: 0 0 min(10rem, 26vw);
+  max-width: 11.5rem;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -255,6 +255,18 @@
   gap: 0.35rem;
   border-top: 1px solid var(--border);
   padding-top: 0.65rem;
+  width: 100%;
+}
+
+.qchat-form__textarea {
+  width: 100%;
+}
+
+.qchat-form__textarea textarea {
+  min-height: 5.5rem;
+  width: 100%;
+  font-size: 0.94rem;
+  line-height: 1.55;
 }
 
 .qchat-form__actions {

@@ -1,36 +1,18 @@
 import { Button, ScrollArea, Stack, Text, Textarea } from '@mantine/core'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LectureCaption, LectureEbookSection } from '../../types/lectures'
+import type { LectureQuestionThread, QuestionContextKind } from '../../types/lectureQuestion'
 import { formatTimestamp } from '../../lib/formatTime'
 import {
   retrieveCombinedEbookRagForLecturePdfs,
   retrieveCombinedEbookRagForQuestion,
 } from '../../lib/ebookRag'
 import { supabase } from '../../lib/supabase'
-import {
-  askLectureTutorChat,
-  type LectureChatTurn,
-  type QuestionContextKind,
-} from '../../lib/gemini'
+import { askLectureTutorChat, type LectureChatTurn } from '../../lib/gemini'
+import { updateUserLectureQaThreadMessages } from '../../lib/userLectureQaThreads'
 import './LectureQuestionModal.css'
 
-export type { QuestionContextKind }
-
-export type LectureQuestionThread = {
-  id: string
-  /** 이 탭을 연 시점(질문하기 클릭 시)의 재생 시각 */
-  contextAtSec: number
-  contextKind: QuestionContextKind
-  /** contextKind === 'ebook' 일 때 PDF에서 선택한 원문(대화 전체에서 API에 유지) */
-  ebookHighlight?: string
-  /** 하이라이트가 있던 PDF 페이지(1-based) — 프롬프트 앵커 ±10페이지에 사용 */
-  ebookHighlightPage?: number
-  /** RAG 인덱싱·검색에 쓰는 동일 PDF URL */
-  ebookPdfUrl?: string
-  messages: LectureChatTurn[]
-  /** 교재 등에서 드래그 인용 시 입력창에 미리 넣을 본문(첫 전송 전까지만 사용) */
-  seedDraft?: string
-}
+export type { QuestionContextKind, LectureQuestionThread }
 
 /** 프롬프트 문구·앵커 설명용: 재생 시각 기준 앞뒤 10분 */
 const CAPTION_WINDOW_RADIUS_SEC = 600
@@ -50,6 +32,8 @@ type Props = {
   ebookSections?: LectureEbookSection[]
   /** 강좌에 연결된 PDF — 영상/자막 검색에서 질문할 때 이중 RAG에 사용 */
   lecturePdfRefs?: { pdf_url: string; title?: string | null }[]
+  /** 있으면 `user_lecture_qa_threads.messages` 에 동기화 */
+  persistUserId?: string | null
 }
 
 function threadTabPreview(messages: LectureChatTurn[]): string {
@@ -73,12 +57,14 @@ export function LectureQuestionPanel({
   captions,
   ebookSections = [],
   lecturePdfRefs = [],
+  persistUserId = null,
 }: Props) {
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const threadsRef = useRef(threads)
   threadsRef.current = threads
 
@@ -130,11 +116,20 @@ export function LectureQuestionPanel({
     setError(null)
     setLoading(true)
 
+    const afterUserMessages = [...prior, { role: 'user' as const, text: q }]
     setThreads((prev) =>
       prev.map((t) =>
-        t.id === threadId ? { ...t, messages: [...t.messages, { role: 'user', text: q }] } : t,
+        t.id === threadId ? { ...t, messages: afterUserMessages } : t,
       ),
     )
+    if (persistUserId) {
+      const { error: pe } = await updateUserLectureQaThreadMessages({
+        userId: persistUserId,
+        threadId,
+        messages: afterUserMessages,
+      })
+      if (pe) console.warn('[user_lecture_qa_threads]', pe.message)
+    }
 
     let ebookRagRetrieved: string | undefined
     try {
@@ -181,11 +176,20 @@ export function LectureQuestionPanel({
         priorTurns: prior,
         newUserMessage: q,
       })
+      const afterModelMessages = [...afterUserMessages, { role: 'model' as const, text }]
       setThreads((prev) =>
         prev.map((t) =>
-          t.id === threadId ? { ...t, messages: [...t.messages, { role: 'model', text }] } : t,
+          t.id === threadId ? { ...t, messages: afterModelMessages } : t,
         ),
       )
+      if (persistUserId) {
+        const { error: pe } = await updateUserLectureQaThreadMessages({
+          userId: persistUserId,
+          threadId,
+          messages: afterModelMessages,
+        })
+        if (pe) console.warn('[user_lecture_qa_threads]', pe.message)
+      }
     } catch (err) {
       setThreads((prev) =>
         prev.map((t) => {
@@ -196,6 +200,14 @@ export function LectureQuestionPanel({
           return { ...t, messages: m }
         }),
       )
+      if (persistUserId) {
+        const { error: pe } = await updateUserLectureQaThreadMessages({
+          userId: persistUserId,
+          threadId,
+          messages: prior,
+        })
+        if (pe) console.warn('[user_lecture_qa_threads]', pe.message)
+      }
       setDraft(q)
       setError(err instanceof Error ? err.message : '요청에 실패했습니다.')
     } finally {
@@ -296,20 +308,28 @@ export function LectureQuestionPanel({
               </Stack>
             </ScrollArea>
 
-            <form className="qchat-form" onSubmit={handleSubmit}>
+            <form ref={formRef} className="qchat-form" onSubmit={handleSubmit}>
               <Textarea
                 ref={inputRef}
+                className="qchat-form__textarea"
                 placeholder={
                   activeThread.messages.length > 0
-                    ? '이어서 질문 입력…'
-                    : '이 구간 기준 첫 질문을 입력…'
+                    ? '이어서 질문 입력… (Enter 전송, Shift+Enter 줄바꿈)'
+                    : '이 구간 기준 첫 질문을 입력… (Enter 전송, Shift+Enter 줄바꿈)'
                 }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' || e.shiftKey) return
+                  if (e.nativeEvent.isComposing) return
+                  e.preventDefault()
+                  formRef.current?.requestSubmit()
+                }}
                 disabled={loading}
-                minRows={2}
-                maxRows={6}
+                minRows={3}
+                maxRows={8}
                 autosize
+                w="100%"
               />
               {error ? (
                 <Text size="sm" c="red" mt={6}>

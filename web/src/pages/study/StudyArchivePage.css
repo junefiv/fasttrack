@@ -1,0 +1,22 @@
+.sa-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--mantine-spacing-md) var(--mantine-spacing-md) var(--mantine-spacing-xl);
+}
+
+.sa-nav-panel {
+  flex: 0 0 min(360px, 38vw);
+  min-width: 260px;
+}
+
+.sa-drill-row {
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.sa-drill-row:hover {
+  border-color: var(--mantine-color-teal-filled);
+  background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
+}

@@ -15,6 +15,8 @@ import { VideoSessionPage } from './pages/videos/VideoSessionPage'
 import { VideosBrowsePage } from './pages/videos/VideosBrowsePage'
 import { CurriculumCoachPage } from './pages/d-agent/CurriculumCoachPage'
 import { LearningCoachChatPage } from './pages/d-agent/LearningCoachChatPage'
+import { StudyArchivePage } from './pages/study/StudyArchivePage'
+import { UserQaDrillPage } from './pages/study/UserQaDrillPage'
 
 const ebookUploadEnabled = import.meta.env.VITE_ENABLE_EBOOK_UPLOAD === 'true'
 
@@ -47,15 +49,8 @@ export default function App() {
             <Route path="questions-bank" element={<QuestionsBankDrillPage />} />
           </Route>
           <Route path="study/question-bank" element={<Navigate to="/study/mock-exam/bank" replace />} />
-          <Route
-            path="study/archive"
-            element={
-              <MenuPlaceholder
-                title="아카이브"
-                description="학습 아카이브는 준비 중입니다."
-              />
-            }
-          />
+          <Route path="study/archive" element={<StudyArchivePage />} />
+          <Route path="study/archive/my-questions/drill" element={<UserQaDrillPage />} />
 
           <Route path="d-agent/mh-chat" element={<LearningCoachChatPage />} />
           <Route path="d-agent/learning-coach" element={<CurriculumCoachPage />} />

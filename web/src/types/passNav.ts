@@ -88,3 +88,12 @@ export type PassNavBundle = {
   /** 취약 처방 큐 첫 문항 → 문제은행 딥링크 */
   prescriptionRemedy: PassNavCategoryRemedy | null
 }
+
+/** 합격군(benchmark_lecture_stats)은 높은데 나(user_lecture_stats)는 낮은 강좌 — 처방 큐 Gemini 입력용 */
+export type PassNavLectureGapItem = {
+  lectureId: string
+  lectureTitle: string
+  subjectLabel: string
+  benchCompletionPct: number
+  userCompletionPct: number
+}

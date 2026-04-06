@@ -2,6 +2,7 @@ import type {
   PassNavBundle,
   BenchmarkMasteryRow,
   CategoryMasteryCompare,
+  PassNavLectureGapItem,
   PassNavSubjectMetricRow,
   PassNavTraffic,
   UserMasteryRow,
@@ -667,7 +668,7 @@ export function buildPassNavSubjectBenchGapSummaries(bundle: PassNavBundle): Pas
       const gap = bc - uc
       if (gap >= 0.5 || uc <= DEVIATION_MAX_STREAK) {
         lines.push(
-          `연속으로 공부한 날: 목표 대학 합격군 평균은 ${bc.toFixed(1)}일인데, 나는 ${uc.toFixed(1)}일 수준이에요.`,
+          `연속으로 공부한 날: 선배들의 평균은 ${bc.toFixed(1)}일인데, 나는 ${uc.toFixed(1)}일 수준이에요.`,
         )
         score += 5 + gap * 3
       }
@@ -677,7 +678,7 @@ export function buildPassNavSubjectBenchGapSummaries(bundle: PassNavBundle): Pas
     const us = r.userSec
     if (bs != null && us != null && bs > 0 && us >= bs * STAGNATION_SLOW_RATIO) {
       lines.push(
-        `문제당 평균 풀이 시간이 ${us.toFixed(1)}초로, 합격군 기준(${bs.toFixed(1)}초)보다 깁니다.`,
+        `문제당 평균 풀이 시간이 ${us.toFixed(1)}초로, 선배들의 평균 풀이 시간(${bs.toFixed(1)}초)보다 깁니다.`,
       )
       score += us / bs
     }
@@ -686,7 +687,7 @@ export function buildPassNavSubjectBenchGapSummaries(bundle: PassNavBundle): Pas
     const ucp = r.userCompletionPct
     if (bcp != null && ucp != null && ucp + completionGapPp < bcp) {
       lines.push(
-        `강의 수강률이 ${ucp.toFixed(1)}%인데, 합격군 평균은 ${bcp.toFixed(1)}% 정도로 잡혀 있어요.`,
+        `강의 수강률이 ${ucp.toFixed(1)}%인데, 선배들의 평균은 ${bcp.toFixed(1)}% 정도예요.`,
       )
       score += (bcp - ucp) / 5
     }
@@ -695,7 +696,7 @@ export function buildPassNavSubjectBenchGapSummaries(bundle: PassNavBundle): Pas
     const ua = r.userAccuracyPct
     if (ba != null && ua != null && ua + accGapPp < ba) {
       lines.push(
-        `정답률이 ${ua.toFixed(1)}%로, 합격군이 보통 맞추는 수준(${ba.toFixed(1)}%)보다 낮아요.`,
+        `정답률이 ${ua.toFixed(1)}%로, 선배들의 평균 정답률(${ba.toFixed(1)}%)보다 낮아요.`,
       )
       score += (ba - ua) / 3
     }
@@ -711,4 +712,39 @@ export function buildPassNavSubjectBenchGapSummaries(bundle: PassNavBundle): Pas
 
 export function subjectSummaryCoversStreak(s: PassNavSubjectBenchSummaryLine): boolean {
   return s.lines.some((l) => l.includes('연속 학습일'))
+}
+
+/** 합격군 평균 수강률은 충분히 높은데, 내 진도가 낮은 강좌 (benchmark_lecture_stats vs user_lecture_stats) */
+const LECTURE_GAP_BENCH_MIN = 75
+const LECTURE_GAP_USER_MAX = 38
+
+export function buildPassNavBenchmarkLectureGaps(bundle: PassNavBundle): PassNavLectureGapItem[] {
+  if (!bundle.benchmarkId) return []
+  const userByLecture = new Map(bundle.userLecture.map((u) => [u.lecture_id, u]))
+  const lectureById = new Map(bundle.lectures.map((l) => [l.id, l]))
+  const out: PassNavLectureGapItem[] = []
+  for (const bl of bundle.benchLecture) {
+    const benchPct = Number(bl.completion_rate ?? 0)
+    if (benchPct < LECTURE_GAP_BENCH_MIN) continue
+    const u = userByLecture.get(bl.lecture_id)
+    const userPct = Number(u?.completion_rate ?? 0)
+    if (userPct >= LECTURE_GAP_USER_MAX) continue
+    const meta = lectureById.get(bl.lecture_id)
+    const title = meta?.title?.trim() || `강의 (${bl.lecture_id.slice(0, 8)}…)`
+    const subjectLabel = meta ? passNavSubjectDisplayLabel(bundle, meta.subject_id) : '—'
+    out.push({
+      lectureId: bl.lecture_id,
+      lectureTitle: title,
+      subjectLabel,
+      benchCompletionPct: benchPct,
+      userCompletionPct: userPct,
+    })
+  }
+  out.sort((a, b) => {
+    const gapA = a.benchCompletionPct - a.userCompletionPct
+    const gapB = b.benchCompletionPct - b.userCompletionPct
+    if (gapB !== gapA) return gapB - gapA
+    return b.benchCompletionPct - a.benchCompletionPct
+  })
+  return out.slice(0, 24)
 }

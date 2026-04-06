@@ -514,9 +514,10 @@ export async function askLectureTutor(params: AskLectureTutorParams): Promise<st
 
 const PASS_NAV_NAVIGATOR_SYSTEM = [
   '역할: FastTrack Pass-Nav 입시 네비게이터 코치.',
-  '입력: 한 수험생의 목표·D-Day·종합지수·과목·카테고리·강의 단위 벤치 대비 수치와 이탈 경보 히스토리가 담긴 JSON이다.',
+  '입력: 한 수험생의 목표·D-Day·종합지수·과목·카테고리·강의 단위 벤치 대비 수치·이탈 경보 히스토리·studyTrend(과목별 추이: 수강시간·문제 활동량·평균 풀이시간, 일·월 구간, 수학·역사·국어·영어, 벤치마크 코호트 평균선 + 유저/벤치 과목별 시계열, chartDemoUi는 UI 데모 참고)가 담긴 JSON이다.',
   'JSON에 없는 사실·점수·학교명을 지어내지 말고, 수치를 언급할 때는 반드시 입력에 있는 값만 인용한다.',
   '벤치마크가 없거나 null이 많으면 "데이터 부족"을 솔직히 짚고, 일반적인 학습 습관 제안만 짧게 한다.',
+  'studyTrend가 있으면 과목·구간별 추이와 벤치 대비를 근거에 포함해 강점·약점·FOMO에 반영한다. fromBundle을 사용자·벤치 실측 우선, chartDemoUi는 참고용.',
   '',
   '출력 형식: 아래 키만 가진 JSON 객체 하나만 출력한다. 앞뒤 설명·마크다운·코드펜스 금지.',
   '{',
@@ -605,4 +606,366 @@ export async function generatePassNavNavigatorSummaryWithGemini(params: {
   const jsonPart = texts.find((t) => t.includes('{') && t.includes('majorStrengths')) ?? joined
   const text = jsonPart.trim() || joined.trim()
   return text || '{}'
+}
+
+const PASS_NAV_PRESCRIPTION_SYSTEM = [
+  '역할: FastTrack Pass-Nav 학습 처방 코치.',
+  '입력: (1) 이탈 경보 알림 본문(body) 문자열 목록 — public.alerts와 동일한 문맥.',
+  '입력: (2) 목표 대학 합격군(benchmark_lecture_stats)은 높은 수강률인데, 나(user_lecture_stats)는 아직 낮은 강좌 목록(강의명·과목·합격군 수강률·나의 수강률).',
+  '제시된 텍스트·숫자 밖의 사실을 지어내지 말 것.',
+  '출력: JSON 객체 하나만. 키 "bullets" — 짧은 학습 경로·방법·해야 할 일을 글머리기호용 문장으로 담은 문자열 배열.',
+  '한국어. 항목 최대 8개, 각 항목 공백 포함 140자 이내. 앞뒤 설명·마크다운 코드펜스 금지.',
+].join('\n')
+
+export function parsePassNavPrescriptionBulletsJson(raw: string): string[] {
+  const t = raw.trim()
+  if (!t) return []
+  try {
+    const parsed = JSON.parse(t) as { bullets?: unknown }
+    if (!Array.isArray(parsed.bullets)) return []
+    return parsed.bullets
+      .map((x) =>
+        String(x)
+          .replace(/^\s*[•\-*]\s*/, '')
+          .trim(),
+      )
+      .filter(Boolean)
+      .slice(0, 8)
+  } catch {
+    return []
+  }
+}
+
+/** Pass-Nav 처방 큐: 이탈 경보 본문 + 벤치 대비 미수강 강좌 근거로 불릿 처방 (JSON) */
+export async function generatePassNavPrescriptionBulletsWithGemini(params: {
+  apiKey: string
+  payload: Record<string, unknown>
+}): Promise<string> {
+  const { apiKey, payload } = params
+  if (!apiKey.trim()) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. VITE_GEMINI_API_KEY 를 확인하세요.')
+  }
+  const model = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_MODEL
+  const userBlock = [
+    '아래 JSON만 근거로 bullets 배열을 채워라. 학습 순서·복습·강좌 우선순위·문제 풀이 습관 등 실행 가능한 처방만.',
+    '',
+    JSON.stringify(payload, null, 2),
+  ].join('\n')
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: PASS_NAV_PRESCRIPTION_SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text: userBlock }] }],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+
+  const data: unknown = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const msg =
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (data as { error?: { message?: string } }).error?.message === 'string'
+        ? (data as { error: { message: string } }).error.message
+        : `Gemini 요청 실패 (${res.status})`
+    throw new Error(msg)
+  }
+
+  const root = data as {
+    promptFeedback?: { blockReason?: string; blockReasonMessage?: string }
+    candidates?: { content?: { parts?: { text?: string }[] } }[]
+  }
+  if (root.promptFeedback?.blockReason) {
+    const m = root.promptFeedback.blockReasonMessage ?? ''
+    throw new Error(`Gemini 프롬프트 차단: ${root.promptFeedback.blockReason}${m ? ` — ${m}` : ''}`)
+  }
+  const cand = root.candidates?.[0]
+  const parts = cand?.content?.parts ?? []
+  const texts = parts.map((p) => p.text).filter((t): t is string => typeof t === 'string')
+  const joined = texts.join('').trim()
+  return joined || '{}'
+}
+
+const STUDY_ARCHIVE_QUESTIONS_SYSTEM = [
+  '역할: 수험생 복습용 문항을 만드는 교육 설계자. 출력은 실제 서비스 DB(questions_bank 스타일)에 저장된다.',
+  '입력: 인강/교재 튜터와 나눈 Q&A 대화 스크립트(여러 스레드)이다. 대화에 나온 개념·오개념·풀이만 근거로 문항을 만든다.',
+  '대화에 없는 내용을 지어내지 말 것. 애매하면 그 범위 안에서만 일반화한다.',
+  '출력: JSON 객체 하나만. 앞뒤 설명·마크다운 코드펜스 금지.',
+  '',
+  '스키마:',
+  '{',
+  '  "questions": [',
+  '    {',
+  '      "kind": "multiple_choice" | "short_answer" | "ox" | "essay",',
+  '      "instruction": string,',
+  '      "content": string | null,',
+  '      "choices": string[] | null,',
+  '      "answer": string,',
+  '      "explanation": string | null,',
+  '      "category_label": string,',
+  '      "tags": string[],',
+  '      "difficulty_level": "상" | "중" | "하",',
+  '      "estimated_time": number,',
+  '      "additional_passage": string | null',
+  '    }',
+  '  ]',
+  '}',
+  '',
+  '필드 설명:',
+  '- instruction: 발문·지시문(한 줄 또는 짧은 문장). 객관식은 "다음 중 ~ 고르시오" 형태.',
+  '- content: 본문·지문·질문 뼈대. 객관식은 지문·도표 설명·빈칸 앞뒤 맥락을 넣는다. 주관식·서술은 여기에 핵심 지문을 넣는다.',
+  '- category_label: 한국어 유형 라벨 한 줄(예: "핵심 개념 파악", "오개념 점검").',
+  '- tags: 해시태그 스타일 문자열 배열(예: ["#함수","#극한"]). 2~5개 권장.',
+  '- difficulty_level·estimated_time(초): 대화 난이도에 맞게.',
+  '- explanation: 정답 근거·해설(짧고 명확하게).',
+  '- additional_passage: 보기·자료 지문이 필요할 때만. 전체 문항 중 일부에만 넣고 나머지는 null (무작위로 섞어서 약 30~40%만 non-null 로 해도 됨).',
+  '',
+  '과목별 규칙 (사용자 메시지에 "현재 과목 표시명"이 주어진다):',
+  '- 과목 표시명에 "국어" 또는 "영어"가 포함되면: short_answer와 essay는 instruction과 content를 **빈 문자열이 아닌 값으로 모두** 채운다(둘 중 하나만 쓰지 말 것).',
+  '- 그 외 과목: short_answer·essay도 **가능하면** content에 지문·질문 본문을 넣고, instruction은 발문만.',
+  '- multiple_choice: choices는 정확히 4개, answer는 정답 선지 **본문과 동일한 문자열**(또는 선지 번호 1~4 문자열).',
+  '- ox: choices는 null, content에 판단 근거가 되는 짧은 맥락을 넣고 instruction에 판단문, answer는 "O" 또는 "X".',
+  '- 한국어, 수능·내신 복습에 맞는 난이도.',
+].join('\n')
+
+export type StudyArchiveQuestionItem = {
+  kind: 'multiple_choice' | 'short_answer' | 'ox' | 'essay'
+  /** 구 스키마 호환 — instruction이 비었을 때만 UI·저장에서 사용 */
+  stem?: string
+  instruction: string
+  content: string | null
+  choices: string[] | null
+  answer: string
+  hint: string | null
+  explanation: string | null
+  category_label: string | null
+  tags: string[] | null
+  difficulty_level: string | null
+  estimated_time: number | null
+  additional_passage: string | null
+}
+
+export type StudyArchiveQuestionsPayload = { questions: StudyArchiveQuestionItem[] }
+
+function parseTags(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null
+  const t = raw.map((x) => String(x).trim()).filter(Boolean)
+  return t.length ? t.slice(0, 24) : null
+}
+
+function parseOneStudyArchiveQuestion(o: Record<string, unknown>): StudyArchiveQuestionItem | null {
+  const kind = o.kind
+  if (
+    kind !== 'multiple_choice' &&
+    kind !== 'short_answer' &&
+    kind !== 'ox' &&
+    kind !== 'essay'
+  ) {
+    return null
+  }
+
+  let instruction = typeof o.instruction === 'string' ? o.instruction : ''
+  const legacyStem = typeof o.stem === 'string' ? o.stem : ''
+  if (!instruction.trim() && legacyStem.trim()) instruction = legacyStem
+
+  let content: string | null =
+    o.content === null || o.content === undefined
+      ? null
+      : typeof o.content === 'string'
+        ? o.content
+        : String(o.content)
+  if (typeof content === 'string' && !content.trim()) content = null
+
+  const answer = typeof o.answer === 'string' ? o.answer : ''
+  if (!answer.trim()) return null
+
+  if (!instruction.trim() && legacyStem.trim()) instruction = legacyStem
+  if (!instruction.trim() && (content ?? '').trim()) {
+    instruction = (content ?? '').trim()
+    content = null
+  }
+  if (!instruction.trim() && !(content ?? '').trim()) return null
+
+  let choices: string[] | null = null
+  if (Array.isArray(o.choices)) {
+    const c = o.choices.map((x) => String(x)).filter((s) => s.trim().length > 0)
+    choices = c.length ? c : null
+  }
+
+  const hint = o.hint == null || o.hint === '' ? null : String(o.hint)
+  const explanation =
+    o.explanation == null || o.explanation === '' ? null : String(o.explanation)
+
+  const category_label =
+    typeof o.category_label === 'string' && o.category_label.trim()
+      ? o.category_label.trim()
+      : null
+
+  const tags = parseTags(o.tags)
+
+  let difficulty_level: string | null = null
+  if (typeof o.difficulty_level === 'string') {
+    const d = o.difficulty_level.trim()
+    if (d === '상' || d === '중' || d === '하') difficulty_level = d
+    else if (d) difficulty_level = d
+  }
+
+  let estimated_time: number | null = null
+  if (typeof o.estimated_time === 'number' && Number.isFinite(o.estimated_time)) {
+    estimated_time = Math.max(0, Math.floor(o.estimated_time))
+  }
+
+  const additional_passage =
+    o.additional_passage === null || o.additional_passage === undefined
+      ? null
+      : typeof o.additional_passage === 'string'
+        ? o.additional_passage.trim() || null
+        : String(o.additional_passage).trim() || null
+
+  return {
+    kind,
+    stem: legacyStem.trim() ? legacyStem : undefined,
+    instruction: instruction.trim(),
+    content,
+    choices,
+    answer: answer.trim(),
+    hint,
+    explanation,
+    category_label,
+    tags,
+    difficulty_level,
+    estimated_time,
+    additional_passage,
+  }
+}
+
+export function parseStudyArchiveQuestionsJson(raw: string): StudyArchiveQuestionsPayload {
+  const t = raw.trim()
+  if (!t) return { questions: [] }
+  try {
+    const parsed = JSON.parse(t) as { questions?: unknown }
+    if (!Array.isArray(parsed.questions)) return { questions: [] }
+    const questions: StudyArchiveQuestionItem[] = []
+    for (const q of parsed.questions) {
+      if (!q || typeof q !== 'object') continue
+      const item = parseOneStudyArchiveQuestion(q as Record<string, unknown>)
+      if (item) questions.push(item)
+    }
+    return { questions: questions.slice(0, 12) }
+  } catch {
+    return { questions: [] }
+  }
+}
+
+/** 학습 아카이브: 선택한 Q&A 스레드만으로 복습 문항 JSON 생성 */
+export async function generateStudyQuestionsFromArchiveThreads(params: {
+  apiKey: string
+  /** 생성할 문항 개수 (모델에 권장, 최대 12) */
+  count: number
+  /** 프롬프트에 넣을 스레드 블록 (이미 포맷된 문자열) */
+  threadsBlock: string
+  /** 과목 표시명 — 국어·영어 주관식 규칙에 사용 */
+  subjectLabel: string
+}): Promise<string> {
+  const { apiKey, count, threadsBlock, subjectLabel } = params
+  if (!apiKey.trim()) {
+    throw new Error('Gemini API 키가 설정되지 않았습니다. VITE_GEMINI_API_KEY 를 확인하세요.')
+  }
+  const n = Math.min(12, Math.max(1, Math.floor(count)))
+  const model = import.meta.env.VITE_GEMINI_MODEL?.trim() || DEFAULT_MODEL
+  const userBlock = [
+    `현재 과목 표시명: ${subjectLabel.trim() || '—'}`,
+    `아래 대화만 근거로 복습용 문항을 정확히 ${n}개 만든다. questions 배열만 채운다.`,
+    '',
+    threadsBlock,
+  ].join('\n')
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: STUDY_ARCHIVE_QUESTIONS_SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text: userBlock }] }],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+      },
+    }),
+  })
+
+  const data: unknown = await res.json().catch(() => ({}))
+
+  if (!res.ok) {
+    const msg =
+      typeof data === 'object' &&
+      data !== null &&
+      'error' in data &&
+      typeof (data as { error?: { message?: string } }).error?.message === 'string'
+        ? (data as { error: { message: string } }).error.message
+        : `Gemini 요청 실패 (${res.status})`
+    throw new Error(msg)
+  }
+
+  const root = data as {
+    promptFeedback?: { blockReason?: string; blockReasonMessage?: string }
+    candidates?: { content?: { parts?: { text?: string }[] } }[]
+  }
+  if (root.promptFeedback?.blockReason) {
+    const m = root.promptFeedback.blockReasonMessage ?? ''
+    throw new Error(`Gemini 프롬프트 차단: ${root.promptFeedback.blockReason}${m ? ` — ${m}` : ''}`)
+  }
+  const cand = root.candidates?.[0]
+  const parts = cand?.content?.parts ?? []
+  const texts = parts.map((p) => p.text).filter((t): t is string => typeof t === 'string')
+  return texts.join('').trim() || '{}'
+}
+
+export function formatArchiveThreadsForPrompt(rows: {
+  lectureTitle: string
+  subjectLabel: string
+  instructor: string
+  sessionTitle: string | null
+  contextKind: 'video' | 'ebook'
+  contextAtSec: number
+  ebookHighlightPage: number | null
+  messages: { role: 'user' | 'model'; text: string }[]
+}[]): string {
+  const blocks: string[] = []
+  let i = 0
+  for (const r of rows) {
+    i += 1
+    const anchor =
+      r.contextKind === 'video'
+        ? `영상 앵커: 약 ${Math.floor(r.contextAtSec)}초`
+        : r.ebookHighlightPage != null
+          ? `교재 앵커: PDF p.${r.ebookHighlightPage} 부근`
+          : '교재 맥락'
+    const lines = r.messages.map((m) => `${m.role === 'user' ? '학습자' : '튜터'}: ${m.text}`)
+    blocks.push(
+      [
+        `--- 스레드 ${i} ---`,
+        `과목: ${r.subjectLabel}`,
+        `강사: ${r.instructor}`,
+        `강좌: ${r.lectureTitle}`,
+        r.sessionTitle ? `회차: ${r.sessionTitle}` : '회차: (교재/비디오 미지정 또는 전체)',
+        `맥락: ${r.contextKind === 'video' ? '영상' : '교재'} · ${anchor}`,
+        '',
+        ...lines,
+      ].join('\n'),
+    )
+  }
+  return blocks.join('\n\n')
 }

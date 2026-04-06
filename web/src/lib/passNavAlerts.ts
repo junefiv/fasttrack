@@ -149,7 +149,7 @@ export function buildPassNavAlerts(
     alerts.push({
       id: `subj-bench-${s.subjectId}`,
       severity: 'high',
-      title: `${s.subjectName} · 목표 대학 합격군과 비교`,
+      title: `${s.subjectName} · 선배 평균과 비교`,
       body: `${s.lines.join(' ')} (위 과목 막대 차트와 같은 기준입니다.)`,
       actionLabel: '강의 목록',
       actionHref: '/study/videos',
@@ -164,7 +164,7 @@ export function buildPassNavAlerts(
         id: `stagnation-${c.subject_id}-${c.category_label}`,
         severity: 'medium',
         title: '정체 경보',
-        body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 문제 하나 푸는 데 평균 ${ut.toFixed(1)}초가 걸립니다. 목표 대학 합격군 기준은 약 ${bt.toFixed(1)}초라서, 그보다 한참 더 느린 편이에요.`,
+        body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 문제 하나 푸는 데 평균 ${ut.toFixed(1)}초가 걸립니다. 선배들의 평균 풀이 시간은 약 ${bt.toFixed(1)}초인데, 그보다 한참 더 느린 편이에요.`,
         actionLabel: '문제 은행',
         actionHref: '/study/mock-exam/questions-bank',
       })
@@ -183,7 +183,7 @@ export function buildPassNavAlerts(
       title: '연속 학습일 경보',
       body: benchLinked
         ? '지금 수강 중인 강의만 보면, 연속으로 학습한 날이 길어도 하루 이하예요. 위에 과목별 요약에 ‘연속 학습’이 안 나오면 강의가 과목에 잘 묶였는지 한번 확인해 보세요.'
-        : '목표 대학 합격 데이터가 아직 연결되지 않았어요. 그래도 기록만 보면 연속으로 공부한 날이 거의 없습니다.',
+        : '선배 비교 데이터가 아직 연결되지 않았어요. 그래도 기록만 보면 연속으로 공부한 날이 거의 없습니다.',
       actionLabel: '강의 목록',
       actionHref: '/study/videos',
     })
@@ -193,7 +193,7 @@ export function buildPassNavAlerts(
     const pct = (drop * 100).toFixed(0)
     const tail =
       benchLinked && focusPair && focusPair.n > 0
-        ? ` 같은 강의들만 모아 보면, 합격군 평균 집중도는 ${focusPair.benchAvg.toFixed(1)}점인데 내 평균은 ${focusPair.userAvg.toFixed(1)}점이에요(${focusPair.n}개 강의 기준).`
+        ? ` 같은 강의들만 모아 보면, 선배들의 평균 집중도는 ${focusPair.benchAvg.toFixed(1)}점인데 내 평균은 ${focusPair.userAvg.toFixed(1)}점이에요(${focusPair.n}개 강의 기준).`
         : ''
     alerts.push({
       id: 'deviation-focus',
@@ -215,7 +215,7 @@ export function buildPassNavAlerts(
       id: 'accuracy',
       severity: 'high',
       title: '정확도 경보',
-      body: `최근에 푼 문제 ${Math.min(10, bundle.recentAttempts.length)}개만 놓고 보면 정답률이 ${acc.rate.toFixed(0)}%예요. 그 유형의 목표치 ${acc.target.toFixed(0)}%보다 ${ACCURACY_ALERT_GAP_PP}%p 이상 낮습니다.`,
+      body: `최근에 푼 문제 ${Math.min(10, bundle.recentAttempts.length)}개만 놓고 보면 정답률이 ${acc.rate.toFixed(0)}%예요. 선배들의 평균 정답률 ${acc.target.toFixed(0)}%보다 ${ACCURACY_ALERT_GAP_PP}%p 이상 낮습니다.`,
       actionLabel: wrong?.ebook_page_id ? '복습 자료' : '모의고사',
       actionHref: wrong?.lecture_caption_id ? `/study/videos` : '/study/mock-exam',
     })
@@ -243,7 +243,7 @@ export function buildPassNavAlertHistory(
       id: `subj-bench-${s.subjectId}`,
       pillar: 'behavioral',
       pillarLabel: PILLAR_LABEL.behavioral,
-      title: `${s.subjectName} · 목표 대학 합격군과 비교`,
+      title: `${s.subjectName} · 선배 평균과 비교`,
       body: `${s.lines.join(' ')} 위 과목 막대 차트와 같은 기준으로 본 거예요.`,
       tone: 'danger',
       occurredAt: null,
@@ -262,7 +262,7 @@ export function buildPassNavAlertHistory(
       title: '연속 학습일 경보',
       body: benchLinked
         ? '지금 수강 중인 강의만 보면, 연속으로 학습한 날이 길어도 하루 이하예요. 과목별 요약에 연속 학습이 안 잡히면 강의가 과목에 잘 묶였는지 확인해 보세요.'
-        : '목표 대학 합격 데이터가 아직 연결되지 않았어요. 그래도 기록만 보면 연속으로 공부한 날이 거의 없습니다.',
+        : '선배 비교 데이터가 아직 연결되지 않았어요. 그래도 기록만 보면 연속으로 공부한 날이 거의 없습니다.',
       tone: 'danger',
       occurredAt: null,
       sortMs: null,
@@ -278,7 +278,7 @@ export function buildPassNavAlertHistory(
     const pct = (focusDrop * 100).toFixed(0)
     const tail =
       benchLinked && focusPair && focusPair.n > 0
-        ? ` 같은 강의들만 모아 보면 합격군 평균 집중도는 ${focusPair.benchAvg.toFixed(1)}점, 내 평균은 ${focusPair.userAvg.toFixed(1)}점이에요(${focusPair.n}개 강의 기준).`
+        ? ` 같은 강의들만 모아 보면 선배들의 평균 집중도는 ${focusPair.benchAvg.toFixed(1)}점, 내 평균은 ${focusPair.userAvg.toFixed(1)}점이에요(${focusPair.n}개 강의 기준).`
         : ''
     drafts.push({
       id: 'bhv-focus',
@@ -341,7 +341,7 @@ export function buildPassNavAlertHistory(
       pillar: 'performance',
       pillarLabel: PILLAR_LABEL.performance,
       title: '정확도 경보',
-      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 내 정답률은 ${ua.toFixed(1)}%인데, 목표 대학 합격군이 보통 맞추는 수준(${ba.toFixed(1)}%)보다 ${gap.toFixed(0)}%p 낮아요.`,
+      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형에서 내 정답률은 ${ua.toFixed(1)}%인데, 선배들의 평균 정답률(${ba.toFixed(1)}%)보다 ${gap.toFixed(0)}%p 낮아요.`,
       tone: gap >= 15 ? 'danger' : 'warn',
       occurredAt: null,
       sortMs: null,
@@ -365,7 +365,7 @@ export function buildPassNavAlertHistory(
       pillar: 'performance',
       pillarLabel: PILLAR_LABEL.performance,
       title: '정답률 급락 (최근 제출)',
-      body: `최근에 푼 문제 기준 정답률이 ${acc.rate.toFixed(0)}%예요. 그에 맞는 목표 정답률 ${acc.target.toFixed(0)}%보다 ${ACCURACY_ALERT_GAP_PP}%p 이상 낮습니다.${cat ? ` 관련 유형: 「${cat}」` : ''}`,
+      body: `최근에 푼 문제 기준 정답률이 ${acc.rate.toFixed(0)}%예요. 선배들의 평균 정답률 ${acc.target.toFixed(0)}%보다 ${ACCURACY_ALERT_GAP_PP}%p 이상 낮습니다.${cat ? ` 관련 유형: 「${cat}」` : ''}`,
       tone: 'danger',
       occurredAt: at,
       sortMs: Number.isFinite(sortMs) ? sortMs : null,
@@ -387,7 +387,7 @@ export function buildPassNavAlertHistory(
         pillar: 'performance',
         pillarLabel: PILLAR_LABEL.performance,
         title: '모의고사 정답률 미달',
-        body: `「${catById.get(u.catalog_id) ?? '모의고사'}」에서 내 평균 정답률은 ${ua.toFixed(1)}%인데, 합격군 목표는 ${ta.toFixed(1)}%로 잡혀 있어요.`,
+        body: `「${catById.get(u.catalog_id) ?? '모의고사'}」에서 내 평균 정답률은 ${ua.toFixed(1)}%인데, 선배들의 평균 정답률은 ${ta.toFixed(1)}%예요.`,
         tone: 'warn',
         occurredAt: null,
         sortMs: null,
@@ -451,7 +451,7 @@ export function buildPassNavAlertHistory(
       pillar: 'stagnation',
       pillarLabel: PILLAR_LABEL.stagnation,
       title: '정체 경보',
-      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형은(는) 문제 하나당 평균 ${ut.toFixed(1)}초가 걸립니다. 합격군 기준 약 ${bt.toFixed(1)}초보다 약 ${sec}초 더 걸리는 셈이라, 속도를 끌어올릴 여지가 있어요.`,
+      body: `「${c.subject_name}」 과목의 「${c.category_label}」 유형은(는) 문제 하나당 평균 ${ut.toFixed(1)}초가 걸립니다. 선배들의 평균 풀이 시간(${bt.toFixed(1)}초)보다 약 ${sec}초 더 걸리는 셈이라, 속도를 끌어올릴 여지가 있어요.`,
       tone: 'warn',
       occurredAt: null,
       sortMs: null,
@@ -473,7 +473,7 @@ export function buildPassNavAlertHistory(
         pillar: 'stagnation',
         pillarLabel: PILLAR_LABEL.stagnation,
         title: '모의고사 풀이 속도 지연',
-        body: `「${catById.get(u.catalog_id) ?? '모의고사'}」에서 문항 하나당 내 평균 풀이 시간은 ${ut.toFixed(1)}초인데, 합격군 목표(${tt.toFixed(1)}초)보다 한참 더 걸리고 있어요.`,
+        body: `「${catById.get(u.catalog_id) ?? '모의고사'}」에서 문항 하나당 내 평균 풀이 시간은 ${ut.toFixed(1)}초인데, 선배들의 평균 풀이 시간(${tt.toFixed(1)}초)보다 한참 더 걸리고 있어요.`,
         tone: 'warn',
         occurredAt: null,
         sortMs: null,
@@ -500,7 +500,7 @@ export function buildPassNavAlertHistory(
         pillar: 'action',
         pillarLabel: PILLAR_LABEL.action,
         title: '필수 강의 누락',
-        body: `목표 대학 합격군의 90% 이상이 완강한 「${titleById.get(b.lecture_id) ?? '핵심 강의'}」인데, 나의 수강 진도는 30%도 안 되었거나 아직 거의 시작하지 않았어요.`,
+        body: `선배 중 90% 이상이 완강한 「${titleById.get(b.lecture_id) ?? '핵심 강의'}」인데, 나의 수강 진도는 30%도 안 되었거나 아직 거의 시작하지 않았어요.`,
         tone: 'warn',
         occurredAt: lw ?? null,
         sortMs: Number.isFinite(lwMs) ? lwMs : null,
@@ -591,7 +591,7 @@ export function buildPassNavAlertHistory(
         pillar: 'performance',
         pillarLabel: '개선 · 유지',
         title: '복귀 성공',
-        body: `「${win.subject_name}」 과목의 「${win.category_label}」 유형 정답률이 합격군 기준보다 ${(win.userAccuracy! - win.benchAccuracy!).toFixed(0)}%p 더 높아요. 지금 리듬을 유지하면 좋겠습니다.`,
+        body: `「${win.subject_name}」 과목의 「${win.category_label}」 유형 정답률이 선배들의 평균보다 ${(win.userAccuracy! - win.benchAccuracy!).toFixed(0)}%p 더 높아요. 지금 리듬을 유지하면 좋겠습니다.`,
         tone: 'success',
         occurredAt: null,
         displayTime: '최근',
@@ -600,6 +600,30 @@ export function buildPassNavAlertHistory(
     : null
 
   return successBlock ? [...threadItems, successBlock] : threadItems
+}
+
+/**
+ * SegmentedControl로 고른 지망의 `bundle.benchmarkId`에 해당하는 알림만 남긴다.
+ * - `benchmark_id`가 있으면 현재 번들 기준과 일치할 때만 포함.
+ * - 구버전/INSERT 누락으로 `benchmark_id`가 없으면, 같은 벤치의 강좌 코호트(`benchLecture`)에
+ *   포함된 `related_lecture_id`인 경우만 포함(필수경로 누락 등).
+ */
+export function filterPassNavDbAlertsForActiveBenchmark(
+  rows: PassNavDbAlertRow[],
+  bundle: PassNavBundle,
+): PassNavDbAlertRow[] {
+  const bid = bundle.benchmarkId
+  const benchLectureIds = new Set(bundle.benchLecture.map((b) => b.lecture_id))
+
+  return rows.filter((r) => {
+    if (r.benchmark_id != null && r.benchmark_id !== '') {
+      if (bid == null || bid === '') return false
+      return r.benchmark_id === bid
+    }
+    if (r.related_lecture_id && benchLectureIds.has(r.related_lecture_id)) return true
+    if (bid != null && bid !== '') return false
+    return true
+  })
 }
 
 /** 관제 센터 `이탈 경보 히스토리` — `public.alerts` 행을 스레드 카드 형식으로 변환 */

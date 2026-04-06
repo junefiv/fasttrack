@@ -12,7 +12,8 @@ export function AppShell() {
   const focusExamTake = /\/study\/mock-exam\/mock\/[^/]+$/.test(pathname)
   const focusDrillTake = pathname === '/study/mock-exam/drill'
   const focusQuestionsBankDrill = pathname.startsWith('/study/mock-exam/questions-bank')
-  const focusMode = focusExamTake || focusDrillTake || focusQuestionsBankDrill
+  const focusUserQaDrill = pathname.startsWith('/study/archive/my-questions/drill')
+  const focusMode = focusExamTake || focusDrillTake || focusQuestionsBankDrill || focusUserQaDrill
 
   return (
     <div

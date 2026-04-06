@@ -8,10 +8,15 @@ import {
   EbookPdfPageNav,
   type PdfReaderToolbarApi,
 } from '../../features/lecture/EbookDrawer'
+import { LectureQuestionPanel } from '../../features/lecture/LectureQuestionModal'
+import type { LectureQuestionThread } from '../../types/lectureQuestion'
 import {
-  LectureQuestionPanel,
-  type LectureQuestionThread,
-} from '../../features/lecture/LectureQuestionModal'
+  ensureFasttrackUserExists,
+  fetchUserLectureQaThreadsForSession,
+  insertUserLectureQaThread,
+  userLectureQaRowToThread,
+} from '../../lib/userLectureQaThreads'
+import { getFasttrackUserId } from '../../lib/fasttrackUser'
 import {
   SessionYouTubePlayer,
   type SessionPlayerHandle,
@@ -51,6 +56,8 @@ function firstRel<T>(x: T | T[] | null | undefined): T | null {
 }
 
 export function VideoSessionPage() {
+  const userId = useMemo(() => getFasttrackUserId(), [])
+  const persistedThreadIdsRef = useRef<Set<string>>(new Set())
   const { sessionId } = useParams<{ sessionId: string }>()
   const [searchParams] = useSearchParams()
   const deepSeekRaw = searchParams.get('t')
@@ -77,6 +84,8 @@ export function VideoSessionPage() {
   const [captionSearchOpen, { open: openCaptionSearch, close: closeCaptionSearch }] =
     useDisclosure(false)
   const [questionOpen, { open: openQuestion, close: closeQuestion }] = useDisclosure(false)
+  /** 질문하기 = 새 탭 생성 / 대화 내역 = 기존 탭만 열어 보기 */
+  const [questionDrawerMode, setQuestionDrawerMode] = useState<'new' | 'history'>('new')
 
   const [load, setLoad] = useState<'idle' | 'loading' | 'ok' | 'err'>('idle')
   const [errMsg, setErrMsg] = useState<string | null>(null)
@@ -184,13 +193,34 @@ export function VideoSessionPage() {
       }
 
       setCaptions((cap.data ?? []) as LectureCaption[])
-      setLoad('ok')
+
+      const { error: uerr } = await ensureFasttrackUserExists(userId)
+      if (uerr && !cancelled) {
+        console.warn('[fasttrack_users]', uerr.message)
+      }
+
+      if (!cancelled) {
+        try {
+          const rows = await fetchUserLectureQaThreadsForSession(userId, lectureId, sessionId)
+          if (cancelled) return
+          persistedThreadIdsRef.current = new Set(rows.map((r) => r.id))
+          setQuestionThreads(rows.map(userLectureQaRowToThread))
+        } catch (e) {
+          if (!cancelled) {
+            console.warn('[user_lecture_qa_threads]', e instanceof Error ? e.message : e)
+            persistedThreadIdsRef.current = new Set()
+            setQuestionThreads([])
+          }
+        }
+      }
+
+      if (!cancelled) setLoad('ok')
     })()
 
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, userId])
 
   const deepEbookOpenedRef = useRef(false)
   useEffect(() => {
@@ -206,7 +236,29 @@ export function VideoSessionPage() {
   useEffect(() => {
     setQuestionThreads([])
     setActiveQuestionThreadId(null)
+    persistedThreadIdsRef.current.clear()
   }, [sessionId])
+
+  useEffect(() => {
+    if (load !== 'ok' || !session) return
+    const lectureId = session.lecture_id
+    const sid = session.id
+    for (const t of questionThreads) {
+      if (persistedThreadIdsRef.current.has(t.id)) continue
+      persistedThreadIdsRef.current.add(t.id)
+      void insertUserLectureQaThread({
+        userId,
+        lectureId,
+        lectureSessionId: sid,
+        thread: t,
+      }).then(({ error }) => {
+        if (error) {
+          persistedThreadIdsRef.current.delete(t.id)
+          console.warn('[user_lecture_qa_threads]', error.message)
+        }
+      })
+    }
+  }, [questionThreads, session, load, userId])
 
   useEffect(() => {
     const tick = () => {
@@ -249,6 +301,7 @@ export function VideoSessionPage() {
   }
 
   function handleQuestionClick() {
+    setQuestionDrawerMode('new')
     const t = playerRef.current?.getCurrentTime() ?? 0
     const id = crypto.randomUUID()
     setQuestionThreads((prev) => [{ id, contextAtSec: t, contextKind: 'video', messages: [] }, ...prev])
@@ -257,7 +310,19 @@ export function VideoSessionPage() {
     bumpUi()
   }
 
+  /** 새 대화를 만들지 않고 저장된 Q&A 탭만 연다 */
+  function handleOpenHistoryDrawer() {
+    setQuestionDrawerMode('history')
+    setActiveQuestionThreadId((prev) => {
+      if (questionThreads.length === 0) return null
+      if (prev && questionThreads.some((x) => x.id === prev)) return prev
+      return questionThreads[0]?.id ?? null
+    })
+    openQuestion()
+  }
+
   function handleOpenQuestionFromCaptionSearch(startSec: number) {
+    setQuestionDrawerMode('new')
     handleSeek(startSec)
     const id = crypto.randomUUID()
     setQuestionThreads((prev) => [
@@ -270,6 +335,7 @@ export function VideoSessionPage() {
   }
 
   function handleOpenQuestionFromPdfSelection(selectedText: string, pdfUrl: string, highlightPage: number) {
+    setQuestionDrawerMode('new')
     const t = playerRef.current?.getCurrentTime() ?? 0
     const id = crypto.randomUUID()
     setQuestionThreads((prev) => [
@@ -342,15 +408,15 @@ export function VideoSessionPage() {
                 </Text>
               )}
             </Stack>
-            <Button
-              variant="filled"
-              color="teal"
-              size="sm"
-              style={{ flexShrink: 0 }}
-              onClick={handleQuestionClick}
-            >
-              질문하기
-            </Button>
+            <Group gap="xs" style={{ flexShrink: 0 }} wrap="nowrap">
+              <Button variant="light" color="teal" size="sm" onClick={handleOpenHistoryDrawer}>
+                대화 내역
+                {questionThreads.length > 0 ? ` (${questionThreads.length})` : ''}
+              </Button>
+              <Button variant="filled" color="teal" size="sm" onClick={handleQuestionClick}>
+                질문하기
+              </Button>
+            </Group>
           </Group>
         </Paper>
 
@@ -424,9 +490,9 @@ export function VideoSessionPage() {
       <Drawer
         opened={questionOpen}
         onClose={closeQuestion}
-        title="질문하기"
+        title={questionDrawerMode === 'history' ? '대화 내역' : '질문하기'}
         position="right"
-        size="md"
+        size="min(520px, 96vw)"
         zIndex={400}
         overlayProps={{ opacity: 0.35 }}
         styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
@@ -445,6 +511,7 @@ export function VideoSessionPage() {
           captions={captions}
           ebookSections={ebookSections}
           lecturePdfRefs={lecturePdfRefs}
+          persistUserId={userId}
         />
       </Drawer>
 

@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Container, Loader, Tabs, Text, Alert } from '@mantine/core'
+import { Container, Loader, Text, Alert, Modal, Stack } from '@mantine/core'
 import { getFasttrackUserId } from '../../lib/fasttrackUser'
 import { fetchPassNavAlertsForUser, fetchPassNavBundle } from '../../lib/passNavQueries'
 import { messageFromUnknownError } from '../../lib/unknownError'
+import { buildPassNavSubjectMetricRows, getDDay, passNavSubjectBarOverallPct } from '../../lib/passNavModel'
 import {
-  buildCategoryCompare,
-  buildPassNavSubjectMetricRows,
-  getDDay,
-  passNavSubjectBarOverallPct,
-} from '../../lib/passNavModel'
-import { buildPassNavAlertHistory, mapPassNavDbAlertsToHistoryItems } from '../../lib/passNavAlerts'
+  buildPassNavAlertHistory,
+  filterPassNavDbAlertsForActiveBenchmark,
+  mapPassNavDbAlertsToHistoryItems,
+} from '../../lib/passNavAlerts'
 import { loadFocusSnapshot, saveFocusSnapshot } from '../../lib/passNavFocusStorage'
 import type { PassNavBundle, PassNavDbAlertRow } from '../../types/passNav'
 import { PassNavCommandCenter } from './pass-nav/PassNavCommandCenter'
-import { PassNavDetailAnalysis } from './pass-nav/PassNavDetailAnalysis'
-import { PassNavAlertCenter } from './pass-nav/PassNavAlertCenter'
 
 export function CurriculumCoachPage() {
   const userId = useMemo(() => getFasttrackUserId(), [])
@@ -26,10 +23,12 @@ export function CurriculumCoachPage() {
   const [dbAlerts, setDbAlerts] = useState<PassNavDbAlertRow[]>([])
   const [activeGoalPriority, setActiveGoalPriority] = useState(1)
 
-  const load = useCallback(async () => {
+  /** 탭 복귀 시에는 silent로 호출해 오버레이 없이 갱신(다른 창 갔다 오면 "다시 로드"처럼 보이지 않게) */
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     const first = !loadedOnceRef.current
+    const silent = options?.silent === true
     if (first) setLoading(true)
-    else setNavBusy(true)
+    else if (!silent) setNavBusy(true)
     setError(null)
     try {
       const [bundleResult, alertsResult] = await Promise.allSettled([
@@ -58,7 +57,7 @@ export function CurriculumCoachPage() {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return
       if (!loadedOnceRef.current) return
-      void load()
+      void load({ silent: true })
     }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
@@ -67,17 +66,18 @@ export function CurriculumCoachPage() {
   const derived = useMemo(() => {
     if (!bundle) return null
     const dDay = getDDay()
-    const compares = buildCategoryCompare(bundle)
     const subjectMetricRows = buildPassNavSubjectMetricRows(bundle)
     const overallPct = passNavSubjectBarOverallPct(subjectMetricRows)
     const prevFocus = loadFocusSnapshot()
     const alertHistory =
       dbAlerts.length > 0
-        ? mapPassNavDbAlertsToHistoryItems(bundle, dbAlerts)
+        ? mapPassNavDbAlertsToHistoryItems(
+            bundle,
+            filterPassNavDbAlertsForActiveBenchmark(dbAlerts, bundle),
+          )
         : buildPassNavAlertHistory(bundle, prevFocus)
     return {
       dDay,
-      compares,
       subjectMetricRows,
       overallPct,
       alertHistory,
@@ -93,41 +93,41 @@ export function CurriculumCoachPage() {
     saveFocusSnapshot(snap)
   }, [bundle])
 
-  if (loading) {
-    return (
-      <Container size="xl" py="xl">
-        <Loader />
-      </Container>
-    )
-  }
-
-  if (error) {
-    return (
-      <Container size="xl" py="xl">
-        <Alert color="red" title="불러오기 실패">
-          {error}
-        </Alert>
-      </Container>
-    )
-  }
-
-  if (!bundle || !derived) {
-    return (
-      <Container size="xl" py="xl">
-        <Text>데이터가 없습니다.</Text>
-      </Container>
-    )
-  }
-
   return (
-    <Container size="xl" py="xl">
-      <Tabs defaultValue="center">
-        <Tabs.List>
-          <Tabs.Tab value="center">관제 센터</Tabs.Tab>
-          <Tabs.Tab value="detail">상세 분석</Tabs.Tab>
-          <Tabs.Tab value="alerts">알림 센터</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="center" pt="lg">
+    <>
+      <Modal
+        opened={loading}
+        onClose={() => {}}
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+        centered
+        overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
+      >
+        <Stack align="center" gap="md" py="sm">
+          <Loader />
+          <Text ta="center" size="sm">
+            학생의 목표를 이룬 선배들의 학습 데이터를 가져오는 중입니다.
+          </Text>
+        </Stack>
+      </Modal>
+
+      {!loading && error ? (
+        <Container size="xl" py="xl">
+          <Alert color="red" title="불러오기 실패">
+            {error}
+          </Alert>
+        </Container>
+      ) : null}
+
+      {!loading && !error && (!bundle || !derived) ? (
+        <Container size="xl" py="xl">
+          <Text>데이터가 없습니다.</Text>
+        </Container>
+      ) : null}
+
+      {!loading && !error && bundle && derived ? (
+        <Container size="xl" py="xl">
           <PassNavCommandCenter
             bundle={bundle}
             activeGoalPriority={activeGoalPriority}
@@ -138,14 +138,8 @@ export function CurriculumCoachPage() {
             dDay={derived.dDay}
             overallPct={derived.overallPct}
           />
-        </Tabs.Panel>
-        <Tabs.Panel value="detail" pt="lg">
-          <PassNavDetailAnalysis bundle={bundle} />
-        </Tabs.Panel>
-        <Tabs.Panel value="alerts" pt="lg">
-          <PassNavAlertCenter rows={dbAlerts} />
-        </Tabs.Panel>
-      </Tabs>
-    </Container>
+        </Container>
+      ) : null}
+    </>
   )
 }

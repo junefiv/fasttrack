@@ -88,10 +88,7 @@ export function MasteryTrafficSection({ items }: { items: PassNavHistoryItem[] }
               <span aria-hidden>🔔</span>
               이탈 경보 히스토리
             </Text>
-            <Text size="xs" c="dimmed" lh={1.35}>
-              현재 학습 사용자·미해소 알림만 표시합니다. 시드 데이터가 여러 user_id로 나뉘어 있으면, 이 목록은 그중 한 명분만
-              보입니다.
-            </Text>
+          
           </Stack>
           {total > 0 ? (
             <Group gap={6} wrap="wrap" justify="flex-end" style={{ flexShrink: 0 }}>
@@ -133,11 +130,13 @@ export function MasteryTrafficSection({ items }: { items: PassNavHistoryItem[] }
                     {alert.displayTime}
                   </Text>
                 </div>
-                
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <Text size="xs" c="gray.2" mt={4} lh={1.45}>
                   {alert.body}
                 </Text>
                 <RemedyActions remedy={alert.remedy} />
+                </div>
+                
                 
               </Box>
             ))

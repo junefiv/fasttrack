@@ -1,5 +1,6 @@
 import type { PassNavHistoryItem } from './passNavAlerts'
 import { buildPassNavCategoryDetailRows, buildPassNavLectureDetailRows } from './passNavModel'
+import { buildPassNavStudyTrendForReport, buildPassNavStudyTrendTextBody } from './passNavStudyTrendData'
 import type { PassNavBundle, PassNavSubjectMetricRow } from '../types/passNav'
 
 export type PassNavNavigatorReportSection = {
@@ -145,9 +146,12 @@ export function buildPassNavNavigatorDataSections(input: {
       ? '이탈·경보 히스토리가 없습니다.'
       : ['최근 최대 40건', ...alertLines].join('\n\n')
 
+  const studyTrendBody = buildPassNavStudyTrendTextBody(bundle, sorted)
+
   return [
     { id: 'summary', title: '요약', body: summaryBody },
     { id: 'per-subject', title: '과목별 지표 (나 / 벤치)', body: perSubjectBody },
+    { id: 'study-trend', title: '과목별 추이 (수강·문제·풀이시간, 일·월)', body: studyTrendBody },
     { id: 'category', title: '카테고리별 벤치 대비', body: categoryBody },
     { id: 'lecture', title: '강의별 수강·연속 학습', body: lectureBody },
     { id: 'alerts', title: '이탈·경보 히스토리', body: alertsBody },
@@ -229,11 +233,14 @@ export function buildPassNavNavigatorGeminiPayload(input: {
       benchConsecutiveDays: r.benchConsecutive,
     })),
     alerts,
+    studyTrend: buildPassNavStudyTrendForReport(input.bundle, sorted),
     notesForModel: [
       'solveTimeSec: 낮을수록 빠른 풀이. 벤치 대비 사용자가 느리면 약점 후보.',
       'completionPct·accuracyPct·consecutiveDays: 벤치 대비 낮으면 약점 후보.',
       'alerts.tone danger/warn은 이탈·경보, success는 완화·회복 신호.',
       '목록은 토큰 한도로 잘렸을 수 있음.',
+      'studyTrend.fromBundle: 현재 유저·벤치마크 번들에서 추출한 일·월 구간별 시계열(원시 일자 데이터 없음 — 구간 평균을 동일 값으로 펼침).',
+      'studyTrend.chartDemoUi: UI 차트 「과목별 추이 (데모)」와 동일한 참고용 데모 수치. fromBundle과 함께 해석하되 사용자별 판단은 fromBundle·상위 subjects 필드를 우선.',
     ],
   }
 }
