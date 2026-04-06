@@ -41,8 +41,7 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
-          # GitHub Pages 프로젝트 사이트: https://junefiv.github.io/fasttrack/
-          GITHUB_PAGES_BASE: /fasttrack/
+          # base 경로는 vite.config에서 GITHUB_REPOSITORY로 자동 계산 (수동이면 GITHUB_PAGES_BASE)
         run: |
           npm ci
           npm run build

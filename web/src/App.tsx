@@ -18,6 +18,9 @@ import { LearningCoachChatPage } from './pages/d-agent/LearningCoachChatPage'
 
 const ebookUploadEnabled = import.meta.env.VITE_ENABLE_EBOOK_UPLOAD === 'true'
 
+const routerBasename =
+  import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '')
+
 function LegacyVideoWatchRedirect() {
   const { sessionId } = useParams()
   if (!sessionId) return <Navigate to="/study/videos" replace />
@@ -26,7 +29,7 @@ function LegacyVideoWatchRedirect() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<DashboardCockpit />} />
